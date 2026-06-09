@@ -1,58 +1,78 @@
 <script setup lang="ts">
-import { Pages, useGlobalState } from '@/composables/app-state';
-const { page, setPage } = useGlobalState();
-
-const tabs = [
-  { id: Pages.HOME,       label: 'Library',  icon: '🎯' },
-  { id: Pages.QUESTS,     label: 'Quests',   icon: '🏆' },
-  { id: Pages.PLAYGROUND, label: 'Logs',     icon: '📋' },
-]
+import EnsIcons from './EnsIcons.vue';
 </script>
 
 <template>
-  <div class="flex flex-col h-dvh overflow-hidden bg-slate-950">
+  <div class="flex flex-col min-h-dvh" style="background: var(--bg-0); color: var(--text-0);">
 
-    <header class="shrink-0 border-b border-slate-800/60 bg-slate-900/80 backdrop-blur-md z-40">
-      <div class="container mx-auto px-5 h-14 flex items-center justify-between">
+    <!-- ── Header ─────────────────────────────────────────────────────── -->
+    <header class="shrink-0 z-50 sticky top-0"
+      style="background: rgba(14,5,16,0.92); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(180,60,100,0.15);">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
 
-        <!-- Logo -->
-        <div class="flex items-center gap-2.5">
-          <div class="w-8 h-8 rounded-xl bg-violet-600 flex items-center justify-center shadow-lg shadow-violet-900/50">
-            <span class="text-base leading-none select-none">🎮</span>
+        <!-- Logo + Brand -->
+        <div class="flex items-center gap-3 shrink-0">
+          <div class="w-8 h-8 rounded-xl flex items-center justify-center logo-glow shrink-0"
+            style="background: linear-gradient(135deg, #7c1d4a, #c4356b);">
+            <EnsIcons name="gamepad" :size="16" style="color: #fff;" />
           </div>
-          <span class="font-bold text-white text-sm tracking-wide">Quest Handler</span>
+          <span class="font-bold text-sm tracking-wide" style="color: var(--text-0);">Ens Quests</span>
         </div>
 
-        <!-- Tabs -->
-        <nav class="flex items-center gap-1">
-          <button
-            v-for="tab in tabs"
-            :key="tab.id"
-            @click="setPage(tab.id)"
-            :class="[
-              'relative flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-200',
-              page === tab.id
-                ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
-            ]"
-          >
-            <span>{{ tab.icon }}</span>
-            {{ tab.label }}
-          </button>
-        </nav>
+        <!-- Credits (center) -->
+        <div class="hidden sm:flex items-center gap-3 text-xs credit-float" style="color: var(--text-2);">
+          <span class="font-semibold" style="color: var(--accent-b);">Ahmed. (4_3a)</span>
+          <span style="color: var(--text-3);">|</span>
+          <!-- Discord -->
+          <a href="https://discord.gg/ens" target="_blank" rel="noopener"
+            class="flex items-center gap-1 transition-all duration-200 hover:opacity-80"
+            style="color: #7289da; text-decoration: none;">
+            <EnsIcons name="discord" :size="13" />
+            <span>discord.gg/ens</span>
+          </a>
+          <span style="color: var(--text-3);">|</span>
+          <!-- Instagram -->
+          <a href="https://instagram.com/a_13qn" target="_blank" rel="noopener"
+            class="flex items-center gap-1 transition-all duration-200 hover:opacity-80"
+            style="color: #e1306c; text-decoration: none;">
+            <EnsIcons name="instagram" :size="13" />
+            <span>a_13qn</span>
+          </a>
+        </div>
 
-        <!-- Status -->
-        <div class="flex items-center gap-2 text-xs text-slate-500">
-          <div class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
-          <span>Online</span>
+        <!-- Mobile credits -->
+        <div class="flex sm:hidden items-center gap-2 text-xs">
+          <a href="https://discord.gg/ens" target="_blank" rel="noopener" style="color: #7289da;">
+            <EnsIcons name="discord" :size="15" />
+          </a>
+          <a href="https://instagram.com/a_13qn" target="_blank" rel="noopener" style="color: #e1306c;">
+            <EnsIcons name="instagram" :size="15" />
+          </a>
         </div>
 
       </div>
     </header>
 
+    <!-- ── Main Content ───────────────────────────────────────────────── -->
     <main class="flex-grow overflow-y-auto">
       <slot />
     </main>
+
+    <!-- ── Footer ─────────────────────────────────────────────────────── -->
+    <footer class="shrink-0 py-4 px-6 text-center text-xs"
+      style="color: var(--text-3); border-top: 1px solid rgba(180,60,100,0.1);">
+      <span class="font-medium" style="color: var(--accent-b);">Ahmed. (4_3a)</span>
+      <span class="mx-2">·</span>
+      <a href="https://discord.gg/ens" target="_blank" rel="noopener"
+        class="hover:opacity-80 transition-opacity" style="color: #7289da; text-decoration: none;">
+        discord.gg/ens
+      </a>
+      <span class="mx-2">·</span>
+      <a href="https://instagram.com/a_13qn" target="_blank" rel="noopener"
+        class="hover:opacity-80 transition-opacity" style="color: #e1306c; text-decoration: none;">
+        @a_13qn
+      </a>
+    </footer>
 
   </div>
 </template>
