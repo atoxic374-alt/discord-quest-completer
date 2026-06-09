@@ -1,0 +1,2 @@
+- [Vite config complexity](vite-config.md) — complex async plugins in vite.config.ts break the dev server; keep it simple and sync.
+- [Game list source](game-list-source.md) — GitHub Pages mirror has CORS open, fetch directly from browser; no proxy needed.

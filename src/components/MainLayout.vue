@@ -1,59 +1,50 @@
 <script setup lang="ts">
 import { Pages, useGlobalState } from '@/composables/app-state';
-import IconRustLang from './IconRustLang.vue';
-import IconVueJs from './IconVueJs.vue';
 
-// Layout component for consistent page structure
-
-const appState = useGlobalState();
-const { page, setPage } = appState;
-
+const { page, setPage } = useGlobalState();
 </script>
 
 <template>
-  <div class="flex flex-col h-dvh overflow-hidden bg-gray-100 dark:bg-gray-900">
-    <header class="bg-white dark:bg-gray-800 shadow-md">
-      <div class="container mx-auto px-4 py-4 flex items-center justify-between">
-        <div class="flex items-center space-x-2">
-          <img src="/logo.svg" alt="Logo" class="h-8 w-8" />
-          <h2 class="text-xl font-bold text-gray-900 dark:text-white"></h2>
+  <div class="flex flex-col h-dvh overflow-hidden bg-slate-950">
+
+    <header class="shrink-0 border-b border-slate-800/60 bg-slate-900/80 backdrop-blur-md z-40">
+      <div class="container mx-auto px-5 h-14 flex items-center justify-between">
+
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-xl bg-violet-600 flex items-center justify-center shadow-lg shadow-violet-900/50">
+            <span class="text-base leading-none select-none">🎮</span>
+          </div>
+          <span class="font-bold text-white text-sm tracking-wide">Quest Handler</span>
         </div>
-        <nav>
-          <ul class="flex space-x-6">
-            <li>
-              <a href="#" 
-                class="text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400"
-                :class="{ 'text-indigo-600 dark:text-indigo-400': page === Pages.HOME }"
-                @click.prevent="setPage(Pages.HOME)"
-              >
-                Home
-              </a>
-            </li> 
-            <li>
-              <a href="#" 
-                class="text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400"
-                :class="{ 'text-indigo-600 dark:text-indigo-400': page === Pages.PLAYGROUND }"
-                @click.prevent="setPage(Pages.PLAYGROUND)"
-              >
-                Playground
-              </a>
-            </li>
-            <li>
-              <a href="#" class="text-gray-700 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400">Settings</a>
-            </li>
-          </ul>
+
+        <nav class="flex items-center gap-1">
+          <button
+            v-for="tab in [{ id: Pages.HOME, label: 'Library', icon: '🎯' }, { id: Pages.PLAYGROUND, label: 'Logs', icon: '📋' }]"
+            :key="tab.id"
+            @click="setPage(tab.id)"
+            :class="[
+              'flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-200',
+              page === tab.id
+                ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+            ]"
+          >
+            <span class="text-sm">{{ tab.icon }}</span>
+            {{ tab.label }}
+          </button>
         </nav>
+
+        <div class="flex items-center gap-2 text-xs text-slate-500">
+          <div class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
+          <span>Connected</span>
+        </div>
+
       </div>
     </header>
-    
+
     <main class="flex-grow overflow-y-auto">
-      <slot></slot>
+      <slot />
     </main>
-    
-    <footer class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-auto">
-      <div class="container mx-auto px-4 py-4 text-center text-sm text-gray-600 dark:text-gray-400">
-        &copy; 2025 Built with <IconRustLang class="inline-block h-4 w-4 text-red-200 dark:text-white mx-0.5"/> Rust and <IconVueJs class="h-4 w-4 inline-block text-[#4FC08D] mx-0.5"/> Vue.js
-      </div>
-    </footer>
+
   </div>
 </template>

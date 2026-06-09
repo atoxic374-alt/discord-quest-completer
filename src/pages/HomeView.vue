@@ -1,701 +1,358 @@
 <script setup lang="ts">
-import { ref, computed, useTemplateRef, shallowRef, provide, nextTick, triggerRef } from 'vue';
-import { onClickOutside, refDebounced, tryOnMounted } from '@vueuse/core';
-import { useFuse } from '@vueuse/integrations/useFuse'
+import { ref, computed, useTemplateRef, shallowRef, provide } from 'vue';
+import { onClickOutside, refDebounced } from '@vueuse/core';
+import { useFuse } from '@vueuse/integrations/useFuse';
 import { randomString } from '@/utils/random-string';
 import { GameActionsProvider, GameExecutable, type Game } from '@/types/types';
 import IconVerified from '@/components/IconVerified.vue';
-import { isEmpty } from 'lodash-es';
 import GameExecutables from '@/components/GameExecutables.vue';
 import { GameActionsKey } from '@/constants/constants';
 import { useFetchGameList } from '@/composables/fetch-gamelist';
 import { UseFuseOptions } from '@vueuse/integrations';
 import Fuse from 'fuse.js';
 import { useGlobalState } from '@/composables/app-state';
-import TimedNotification from '@/components/TimedNotification.vue';
 
-
-type DialogKey = 
-    'none' | 
-    'rpc_message_1'|
-    'no_game_selected';;
-
-// Game list from JSON file
-// const gameDB = ref<Game[]>([]);
+const { addLog } = useGlobalState();
 
 const {
-    gameDB,
-    isLoadingBundled,
-    isLoadingDiscord,
-    isLoadingGH,
-    fetchGameList,
-    isReadyGH,
-    isReadyBundled,
-    isReadyDiscord,
-    allFetchDone,
-} = useFetchGameList()
-const { addLog } = useGlobalState();
-const shouldShowNotificationContainer = computed(() => {
-    return isLoadingGH.value || isLoadingDiscord.value || isLoadingBundled.value ||
-           (isReadyGH.value || isReadyDiscord.value || isReadyBundled.value);
-});
+  gameDB, isLoadingGH, isReadyGH, allFetchDone, fetchGameList
+} = useFetchGameList();
 
-const dialogRef = useTemplateRef<HTMLDialogElement>('dialogRef');
-const searchResultContainerRef = useTemplateRef<HTMLElement>('searchResultContainerRef')
-const dialogMessage = ref('');
-const isDialogOpen = ref(false);
-const dialogKey = ref<DialogKey>('none')
-const isConnectedToRPC = ref(false);
-const isConnecting = ref(false);
+// ── Search ──────────────────────────────────────────────
+const searchQuery      = shallowRef('');
+const debouncedQuery   = refDebounced(searchQuery, 250);
+const searchOpen       = ref(false);
+const isOnResults      = ref(false);
+const searchRef        = useTemplateRef<HTMLElement>('searchRef');
 
-// Search functionality
-const searchQuery = shallowRef('');
-const debouncedSearchQuery = refDebounced(searchQuery, 300)
-
-const searchResultsIsOpen = ref(false);
-const isOnSearchResults = ref(false);
-
-// Game status
-const currentlyPlaying = ref<string | null>(null);
-
-
-onClickOutside(searchResultContainerRef, () => {
-    searchResultsIsOpen.value = false;
-})
-
-// const searchResults = computed(() => {
-//     if (!debouncedSearchQuery.value) return [];
-//     const query = debouncedSearchQuery.value.toLowerCase();
-//     return gameDB.value.filter(game =>
-//         game.name.toLowerCase().includes(query) ||
-//         game.aliases?.some(alias => alias.toLowerCase().includes(query))
-//     );
-// });
+onClickOutside(searchRef, () => { searchOpen.value = false; });
 
 const COPYRIGHT_SYMBOL = '\u00A9';
 const TRADEMARK_SYMBOL = '\u2122';
 const REGISTERED_SYMBOL = '\u00AE';
-const ignoredSymbols = [COPYRIGHT_SYMBOL, TRADEMARK_SYMBOL, REGISTERED_SYMBOL];
-const ignoredSymbolsRegex = new RegExp(`[${ignoredSymbols.join('')}]`, 'g');
-const fuseOptions = computed<UseFuseOptions<Game>>(() => ({
-    fuseOptions: {
-        // Prioritize name and aliases for searching, then lastly executables
-        keys: [
-            { name: 'name', weight: 0.7 },
-            { name: 'aliases', weight: 0.2 },
-            { name: 'executables.name', weight: 0.1 },
-        ],
-        getFn: (obj: any, path: string[] | string) => {
-            const value = Fuse.config.getFn(obj, path);
-            return typeof value === "string"
-            ? value.replace(ignoredSymbolsRegex, "")
-            : value;
-        },
-        isCaseSensitive: false,
-        threshold: 0.5,        
-        // A score of 0indicates a perfect match, while a score of 1 indicates a complete mismatch
-        includeScore: true,
-        includeMatches: false
+const ignoredRe = new RegExp(`[${[COPYRIGHT_SYMBOL, TRADEMARK_SYMBOL, REGISTERED_SYMBOL].join('')}]`, 'g');
+
+const fuseOpts = computed<UseFuseOptions<Game>>(() => ({
+  fuseOptions: {
+    keys: [
+      { name: 'name', weight: 0.7 },
+      { name: 'aliases', weight: 0.2 },
+      { name: 'executables.name', weight: 0.1 },
+    ],
+    getFn: (obj: any, path: string[] | string) => {
+      const v = Fuse.config.getFn(obj, path);
+      return typeof v === 'string' ? v.replace(ignoredRe, '') : v;
     },
-    resultLimit: 12,
-    matchAllWhenSearchEmpty: false,
+    isCaseSensitive: false,
+    threshold: 0.4,
+    includeScore: true,
+  },
+  resultLimit: 15,
+  matchAllWhenSearchEmpty: false,
 }));
 
-const { results: searchResults } = useFuse(debouncedSearchQuery, gameDB, fuseOptions)
+const { results: searchResults } = useFuse(debouncedQuery, gameDB, fuseOpts);
 
-// Selected games list
-const gameList = ref<Game[]>([]);
-// const selectedGame = ref<Game | null>(null);
+// ── Selected games ───────────────────────────────────────
+const gameList       = ref<Game[]>([]);
 const selectedGameId = ref<string | null | undefined>(null);
+const currentlyPlaying = ref<string | null>(null);
+const forceKey       = ref(0);
 
-const selectedGame = computed(() => {
-    if (!selectedGameId.value) return null;
-    const found = gameList.value.find(g => g.uid === selectedGameId.value);
-    console.log('selectedGame computed - selectedGameId:', selectedGameId.value, 'found:', found);
-    return found || null;
-});
+const selectedGame = computed(() =>
+  gameList.value.find(g => g.uid === selectedGameId.value) ?? null
+);
 
-function closeSearchResults() {
-    searchResultsIsOpen.value = false;
+function addGame(game: Game) {
+  if (!gameList.value.some(g => g.id === game.id)) {
+    gameList.value.push({ uid: randomString(), ...game });
+  }
+  searchOpen.value = false;
+  searchQuery.value = '';
 }
-function openSearchResults() {
-    searchResultsIsOpen.value = true;
+function removeGame(game: Game) {
+  gameList.value = gameList.value.filter(g => g.uid !== game.uid);
+  if (selectedGame.value?.uid === game.uid) { selectedGameId.value = null; forceKey.value++; }
 }
+function selectGame(game: Game) { selectedGameId.value = game.uid; searchOpen.value = false; }
 
-// Function to add a game to the selected list
-function addGameToList(game: Game) {
-    if (!gameList.value.some(g => g.id === game.id)) {
-        gameList.value.push({
-            uid: randomString(),
-            ...game
-        });
-    }
-
-    closeSearchResults();
+// ── Game actions (browser stubs) ─────────────────────────
+async function createDummy(game: Game, exe: GameExecutable): Promise<boolean> {
+  const g = gameList.value.find(x => x.uid === game.uid);
+  const e = g?.executables.find(x => x.name === exe.name);
+  if (g && e) { g.is_installed = true; e.is_installed = true; addLog('info', `✓ Marked as installed: ${g.name}`); return true; }
+  return false;
 }
-
-const forceRerenderKey = ref(0); 
-// Function to remove a game from the selected list
-function removeGameFromList(game: Game) {
-    const gameId = game.uid;
-    gameList.value = gameList.value.filter(game => game.uid !== gameId);
-    if (selectedGame.value?.uid === gameId) { 
-        // selectedGame.value = null;
-        selectedGameId.value = null;
-        forceRerenderKey.value++; 
-    }
+async function playGame({ game, executable }: { game: Game; executable: GameExecutable }) {
+  const g = gameList.value.find(x => x.uid === game.uid);
+  const e = g?.executables.find(x => x.name === executable.name);
+  if (g && e) {
+    g.is_running   = true;
+    e.is_running   = true;
+    currentlyPlaying.value = g.id;
+    addLog('info', `▶ Now playing: ${g.name} (${executable.name})`);
+  }
 }
-
-function selectGame(game: Game) {
-    // selectedGame.value = game;
-    selectedGameId.value = game?.uid;
-    searchResultsIsOpen.value = false;
+async function stopPlaying({ game, executable }: { game: Game; executable: GameExecutable }) {
+  const g = gameList.value.find(x => x.uid === game.uid);
+  const e = g?.executables.find(x => x.name === executable.name);
+  if (g && e) { g.is_running = false; e.is_running = false; }
+  if (currentlyPlaying.value === game.id) currentlyPlaying.value = null;
+  addLog('info', `■ Stopped: ${game.name}`);
 }
-
-function canCreateDummyGame(game: Game | null) {
-    if (!game) {
-        return false;
-    }
-    // we can only create a dummy game if the game is not installed or game is not running
-    return !game.is_installed
+async function installAndPlay({ game, executable }: { game: Game; executable: GameExecutable }) {
+  await createDummy(game, executable);
+  await playGame({ game, executable });
 }
 
-function canPlayGame(game: Game | null) {
-    if (!game) {
-        return false;
-    }
-    // we can only play a game if the game is installed and not running
-    return (game.is_installed && !game.is_running) ?? false;
-}
-
-function isExecutableRunning(executable: GameExecutable) {
-    // Check if the executable is running
-    return executable.is_running ?? false;
-}
-function isGameExecutableInstalled(executable: GameExecutable) {
-    // Check if the executable is installed
-    return executable.is_installed ?? false;
-}
-
-function isGameInstalled(game: Game | null) {
-    if (!game) {
-        return false;
-    }
-    // we can only play a game if the game is installed and not running
-    return game.is_installed ?? false;
-}
-
-
-// Create a dummy game
-async function createDummyGame(game: Game | null, executable: GameExecutable) {
-    if (!game) {
-        return;
-    }
-    const gameUid = game.uid;
-    const gameToInstall = gameList.value.find(g => g.uid === gameUid);
-    const executableItem = gameToInstall?.executables.find(exe => exe.name === executable.name);
-    if (gameToInstall && executableItem) {
-        const payload =  { 
-            path: executable.path,
-            executable_name: executable.filename,
-            path_len: executable.segments,
-            app_id: Number(gameToInstall.id),
-        }
-        console.log(payload);
-        addLog('info', `[Browser] Game setup noted: ${gameToInstall.name}`);
-        gameToInstall.is_installed = true;
-        executableItem.is_installed = true;
-        return true;
-    }
-}
-
-
-async function installAndPlay({game, executable}: {game: Game, executable: GameExecutable}) {
-    if (!game) {
-        return;
-    }
-    const gameCreated = await createDummyGame(game, executable);
-    if (gameCreated) {
-        playGame({game, executable});
-    } else {
-        console.error('Failed to create game');
-        addLog('error', 'Failed to create game');
-    }
-}
-// Play game function
-async function playGame({game, executable}: {game: Game, executable: GameExecutable}) {
-    if (!game) {
-        return;
-    }
-    const gameUid = game.uid;
-    try {
-        console.log(`Playing game: ${gameUid}`);
-        addLog('info', `Playing game: ${game.name}`);
-        addLog('info', `Executable: ${executable.name}`);
-        currentlyPlaying.value = game.id;
-        // find the game in the list
-        const gameToPlay = gameList.value.find(g => g.uid === gameUid);
-        const executableItem = gameToPlay?.executables.find(exe => exe.name === executable.name);
-        if (gameToPlay && executableItem) {
-            const payload =  { 
-                name: game.name,
-                path: executable.path,
-                executable_name: executable.filename,
-                path_len: executable.segments,
-                app_id: Number(gameToPlay.id),
-            } 
-            addLog('info', `[Browser] Run noted for: ${game.name}`);
-            gameToPlay.is_running = true;
-            executableItem.is_running = true; 
-        }
-        // In a real app, this would invoke a Tauri command to launch the game
-       
-    } catch (error) {
-        console.error('Failed to launch game:', error);
-    }
-}
-
-// Stop playing
-async function stopPlaying({game, executable}: {game: Game, executable: GameExecutable}) {
-    if (!game) {
-        return;
-    }
-    console.log('Stopped playing game');
-    const gameUid = game.uid;
-    
-    currentlyPlaying.value = null;
-
-    const gameToPlay = gameList.value.find(g => g.uid === gameUid);
-    const executableItem = gameToPlay?.executables.find(exe => exe.name === executable.name);
-    if (gameToPlay && executableItem) {
-        try {
-            addLog('info', `Stopped game: ${game.name}`);
-            addLog('info', `Stopped Executable: ${executable.name}`);
-        } finally {
-            gameToPlay.is_running = false;
-            executableItem.is_running = false;
-        }
-    }
-}
-
-function getExecutables(game: Game) {
-    return game.executables.map(exe => exe.name)
-}
-
-async function handleTestRPC(game: Game | null) {
-    let state = isConnectedToRPC.value ? 'disconnect' : 'connect';
-
-    console.log('Testing RPC for game:', game);
-    if (!game && state === 'connect') {
-        showDialog('no_game_selected');
-        return;
-    }
-    if (state === 'disconnect' || isConnecting.value) {
-        // await invoke('connect_to_discord_rpc_2', { app_id: "0", discord_state: "disconnect" })
-        // invoke('connect_to_discord_rpc_3', {
-        //     activity_json: JSON.stringify({
-        //         app_id: selectedGame.value?.id
-        //     }),
-        //     action: 'disconnect',
-        // })
-        isConnectedToRPC.value = false;
-        game!.is_running = false;
-        currentlyPlaying.value = null;
-        isConnecting.value = false;
-        return;
-    }
-    showDialog('rpc_message_1');
-}
-
-async function continueRPCRisk(game: Game | null) {
-    if (!game) {
-        return;
-    }
-    const gameUid = game.uid;
-    const gameToTest = gameList.value.find(g => g.uid === gameUid);
-    if (gameToTest) {
-        console.log('Testing RPC for game:', gameToTest);
-        isConnecting.value = true;
-        addLog('warning', 'RPC connect requires the desktop app (Tauri). Not available in browser.');
-        isConnectedToRPC.value = false;
-        isConnecting.value = false;
-        hideDialog();
-    }
-}
-
-function handleSearchBlur() {
-    setTimeout(() => {
-        if (!isOnSearchResults.value) {
-            searchResultsIsOpen.value = false;
-        }
-    }, 200);
-}
-
-function showDialog(message: DialogKey) {
-    isDialogOpen.value = true;
-    dialogMessage.value = message;
-    dialogKey.value = message;
-    if(!isEmpty(message)) {
-        dialogRef.value?.showModal();
-    }
-}
-
-function hideDialog() {
-    dialogRef.value?.close(); 
-    dialogMessage.value = '';
-    isDialogOpen.value = false;
-}
-
-
+// ── Providers ────────────────────────────────────────────
 provide<GameActionsProvider>(GameActionsKey, {
-    canPlayGame,
-    isGameInstalled,
-    isExecutableRunning,
-    isGameExecutableInstalled,
+  canPlayGame: (g) => (g?.is_installed && !g?.is_running) ?? false,
+  isGameInstalled: (g) => g?.is_installed ?? false,
+  isExecutableRunning: (e) => e?.is_running ?? false,
+  isGameExecutableInstalled: (e) => e?.is_installed ?? false,
 });
+
+const playingGame = computed(() => gameList.value.find(g => g.id === currentlyPlaying.value));
 </script>
 
 <template>
-    <div class="container mx-auto px-4 py-8">
-        <!-- Center dialog -->
-        <dialog id="dialog" class="dialogStyle inset-0 bg-gray-800 bg-opacity-50
-        border border-gray-300 dark:border-gray-600 rounded-lg
-        transition-opacity duration-300 ease-in-out z-50
-        "
-        style="left: 50%; top: 50%; transform: translate(-50%, -50%)"
-        ref="dialogRef">
-            <div class="flex flex-col items-center justify-center p-6" >
-                <div class="mb-4 text-gray-500 dark:text-gray-400">
-                    <div v-if="dialogKey === 'rpc_message_1'">
-                        <p>
-                        This is only a feature in development.  
-                        </p>
-                        <p class="my-2">
-                            It works but due to the nature that it tricks Discord into thinking you are playing a game
-                            by sending an RPC using actual game ID rather than letting Discord detect you have a game/application running. 
-                        </p>
-                        <p>
-                        This may flag your account as suspicious for self-botting.
-                        </p>
-                    </div>
+  <div class="min-h-full bg-slate-950 text-slate-100">
 
-                    <div v-if="dialogKey === 'no_game_selected'">
-                        <p>
-                            No game selected. Please select a game from the list on the left.
-                        </p>
+    <!-- ── Loading banner ──────────────────────────────── -->
+    <Transition enter-from-class="opacity-0 -translate-y-2" enter-active-class="transition-all duration-300"
+                leave-to-class="opacity-0 -translate-y-2" leave-active-class="transition-all duration-300">
+      <div v-if="!allFetchDone" class="bg-violet-950/60 border-b border-violet-800/30 px-5 py-2 flex items-center gap-3 text-xs text-violet-300">
+        <div class="w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full spin-slow"></div>
+        <span v-if="isLoadingGH">جاري تحميل قائمة الألعاب…</span>
+        <span v-else-if="isReadyGH">✓ تم تحميل {{ gameDB.length.toLocaleString() }} لعبة</span>
+      </div>
+    </Transition>
+
+    <div class="container mx-auto px-4 py-6 max-w-6xl space-y-6">
+
+      <!-- ── Hero search ──────────────────────────────── -->
+      <div class="relative" ref="searchRef">
+        <div class="relative flex items-center">
+          <span class="absolute left-4 text-slate-400 text-lg pointer-events-none">🔍</span>
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="ابحث عن أي لعبة في العالم…"
+            class="w-full pl-11 pr-32 py-3.5 bg-slate-900 border border-slate-700/60 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-violet-500/70 focus:ring-2 focus:ring-violet-500/20 transition-all duration-200 text-sm"
+            @focus="searchOpen = true"
+            @blur="setTimeout(() => { if (!isOnResults) searchOpen = false }, 200)"
+          />
+          <button @click="fetchGameList()"
+            class="absolute right-2 flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700/60 rounded-lg text-xs text-slate-300 transition-colors duration-150">
+            <span>🔄</span> تحديث
+          </button>
+        </div>
+
+        <!-- Search dropdown -->
+        <Transition enter-from-class="opacity-0 translate-y-1" enter-active-class="transition-all duration-150"
+                    leave-to-class="opacity-0 translate-y-1" leave-active-class="transition-all duration-150">
+          <div v-if="searchOpen && searchQuery.length > 0"
+            class="absolute z-50 mt-2 w-full card-glass rounded-xl shadow-2xl shadow-black/50 overflow-hidden border border-slate-700/40"
+            @mouseenter="isOnResults = true" @mouseleave="isOnResults = false">
+            <div v-if="searchResults.length > 0" class="max-h-72 overflow-y-auto">
+              <div v-for="r in searchResults" :key="r.item.id"
+                class="flex items-center justify-between px-4 py-3 hover:bg-slate-800/80 border-b border-slate-800/50 last:border-0 transition-colors duration-100 cursor-pointer fade-slide-in"
+                @click="addGame(r.item)">
+                <div class="flex items-center gap-3 min-w-0">
+                  <div class="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center shrink-0 text-base">🎮</div>
+                  <div class="min-w-0">
+                    <div class="font-medium text-sm text-white truncate flex items-center gap-1.5">
+                      {{ r.item.name }}
+                      <IconVerified class="w-3.5 h-3.5 text-violet-400 shrink-0" />
                     </div>
+                    <div class="text-xs text-slate-500">ID: {{ r.item.id }} • {{ r.item.executables?.length ?? 0 }} ملف تنفيذي</div>
+                  </div>
                 </div>
-                <div class="gap-2 flex">
-                    <button
-                    
-                    class="
-                text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 
-                border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-1"
-                @click="hideDialog()">
-                    <span  v-if="dialogKey == 'rpc_message_1'">
-                        Cancel 
-                    </span>
-                    <span v-else>OK</span>
+                <button class="shrink-0 ml-3 px-3 py-1 bg-violet-600/20 hover:bg-violet-600/40 border border-violet-500/30 rounded-lg text-xs text-violet-300 transition-colors duration-150">
+                  + إضافة
                 </button>
-                
-                <button 
-                v-if="dialogKey === 'rpc_message_1'"
-                class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 
-                border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-1"
-                @click="continueRPCRisk(selectedGame)">
-                    Accept risk and continue
-                </button>
-                </div>
+              </div>
             </div>
-        </dialog>
-        <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-6 text-center">
-            Handler
-        </h1>
-
-        <!-- refetch game list fetch status. will appear on top left -->
-        <Transition 
-            enter-active-class="transition-opacity duration-300 delay-100 ease-in-out"
-            leave-active-class="transition-opacity duration-600 delay-100 ease-in-out"  
-            enter-from-class="opacity-0 translate-y-2 ease-in-out"
-            enter-to-class="opacity-100 translate-y-0 ease-in-out"
-        >
-            <div class="absolute top-20 left-4 z-20 " v-if="shouldShowNotificationContainer && !allFetchDone">
-                <!-- Fetching from mirror loading indicator --> 
-                <Transition 
-                    enter-active-class="transition-opacity duration-300 delay-100 ease-in-out"
-                    leave-active-class="transition-opacity duration-600 delay-100 ease-in-out"  
-                    enter-from-class="opacity-0 translate-y-2 ease-in-out"
-                    enter-to-class="opacity-100 translate-y-0 ease-in-out"
-                >
-                    <div v-if="isLoadingGH" class="text-sm text-gray-500 dark:text-gray-400">
-                        Fetching game list from GitHub mirror... 
-                      <div class="border-full h-2 w-2 bg-green-500 rounded-full inline-block ml-2 animate-pulse"></div>
-                    </div>
-                </Transition>
-                <TimedNotification
-                    :is-ready="isReadyGH" 
-                    :duration="1500"
-                    container-class="text-sm text-gray-500 dark:text-gray-400"
-                > 
-                    Game list from mirror fetched <span class="text-green-400">✓</span>
-                </TimedNotification>
-
-                <!-- Fetching from Discord loading indicator -->
-                <Transition 
-                    enter-active-class="transition-opacity duration-300 delay-100 ease-in-out"
-                    leave-active-class="transition-opacity duration-600 delay-100 ease-in-out"  
-                    enter-from-class="opacity-0 translate-y-2 ease-in-out"
-                    enter-to-class="opacity-100 translate-y-0 ease-in-out"
-                >
-                    <div v-if="isLoadingDiscord" class="text-sm text-gray-500 dark:text-gray-400">
-                        Fetching game list directly from Discord...
-                        <div class="border-full h-2 w-2 bg-green-500 rounded-full inline-block ml-2 animate-pulse"></div>
-                    </div>
-                </Transition>
-                <TimedNotification
-                    :is-ready="isReadyDiscord" 
-                    :duration="1500"
-                    container-class="text-sm text-gray-500 dark:text-gray-400"
-                > 
-                    Game list from Discord fetched <span class="text-green-400">✓</span>
-                </TimedNotification>
-
-                
-                <!-- Fetching from bundled loading indicator -->
-                <Transition 
-                    enter-active-class="transition-opacity duration-300 delay-100 ease-in-out"
-                    leave-active-class="transition-opacity duration-600 delay-100 ease-in-out"  
-                    enter-from-class="opacity-0 translate-y-2 ease-in-out"
-                    enter-to-class="opacity-100 translate-y-0 ease-in-out"
-                >
-                    <div v-if="isLoadingBundled" class="text-sm text-gray-500 dark:text-gray-400">
-                        Fetching game list from bundled game list...
-                        <div class="border-full h-2 w-2 bg-green-500 rounded-full inline-block ml-2 animate-pulse"></div>
-                    </div>
-                </Transition>
-                <TimedNotification
-                    :is-ready="isReadyBundled" 
-                    :duration="1500"
-                    container-class="text-sm text-gray-500 dark:text-gray-400"
-                > 
-                    Game list from bundle pre-loaded <span class="text-green-400">✓</span>
-                </TimedNotification>
-
+            <div v-else class="px-4 py-6 text-center text-sm text-slate-500">
+              <span class="text-2xl block mb-2">🔎</span>
+              لا توجد نتائج لـ "{{ searchQuery }}"
             </div>
+          </div>
         </Transition>
+      </div>
 
-        <!-- Search Bar -->
-        <div class="mb-8">
-            <div class="relative" ref="searchResultContainerRef">
-               <div>
-                 <input v-model="searchQuery" type="text" placeholder="Search Discord Verified games..."
-                    class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:text-white"
-                    @focus="openSearchResults" @blur="handleSearchBlur" />
+      <!-- ── Main 2-col layout ────────────────────────── -->
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
-                <!-- buttons to refetch game list -->
-                <button
-                    @click="fetchGameList()"
-                    class="absolute right-0 top-1/2 transform -translate-y-1/2 px-3 mr-2 py-1 text-sm bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-white rounded-md">
-                    <span class="wrap whitespace-nowrap text-xs">
-                        Refetch Game List
-                    </span>
-                </button>   
-               </div>
-                <div v-if="searchResultsIsOpen" @click="isOnSearchResults = true"
-                    class="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    <div v-if="searchResults.length > 0">
-                        <div v-for="game in searchResults" :key="game.item.id"
-                            class="p-3 hover:bg-gray-100 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700 last:border-b-0">
-                            <div class="flex justify-between items-center">
-                                <div>
-                                    <div class="font-medium text-gray-800 dark:text-white">
-                                        {{ game.item.name }}
-                                    </div>
-                                    <div class="text-sm text-gray-500 dark:text-gray-400">ID: {{ game.item.id }}</div>
-                                    <div class="text-xs text-gray-500 dark:text-gray-400">
-                                        Executables:
-                                        <ul class="list-disc list-inside">
-                                            <li v-for="exe in game.item.executables" :key="exe.name"
-                                                class="text-gray-500 dark:text-gray-400">
-                                                <span class="font-mono">
-                                                {{ exe.name }}
-                                                ({{ exe.os }})</span>
-                                            </li>
-                                        </ul>
-                                    </div>
-                                </div>
-                                <button @click="addGameToList(game.item)"
-                                    class="ml-2 px-3 py-1 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-md">
-                                    Add game to list
-                                </button>
-                            </div>
-                        </div>
+        <!-- LEFT: Selected games ──────────────────────── -->
+        <div class="lg:col-span-2 space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-slate-300 flex items-center gap-2">
+              <span>📋</span> ألعابي المختارة
+              <span class="px-1.5 py-0.5 bg-slate-800 rounded-md text-xs text-slate-400">{{ gameList.length }}</span>
+            </h2>
+          </div>
+
+          <!-- Empty state -->
+          <div v-if="gameList.length === 0"
+            class="card-glass rounded-xl p-8 text-center border border-dashed border-slate-700/50">
+            <div class="text-3xl mb-3 float-anim">🎯</div>
+            <p class="text-sm text-slate-400">ابحث عن لعبة وأضفها للقائمة</p>
+          </div>
+
+          <!-- Game cards -->
+          <TransitionGroup name="game-list" tag="div" class="space-y-2">
+            <div v-for="game in gameList" :key="game.uid"
+              class="card-glass rounded-xl px-4 py-3 cursor-pointer transition-all duration-200 hover:border-slate-600/60"
+              :class="[
+                selectedGame?.uid === game.uid ? 'selected-glow border-violet-500/30' : 'border-transparent',
+                game.is_running ? 'playing-glow' : ''
+              ]"
+              @click="selectGame(game)">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3 min-w-0">
+                  <div class="relative shrink-0">
+                    <div class="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center text-base">🎮</div>
+                    <div v-if="game.is_running"
+                      class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 rounded-full border-2 border-slate-950 glow-green"></div>
+                  </div>
+                  <div class="min-w-0">
+                    <div class="font-medium text-sm text-white truncate flex items-center gap-1.5">
+                      {{ game.name }}
+                      <IconVerified class="w-3.5 h-3.5 text-violet-400 shrink-0" />
                     </div>
-                    <!-- Some help -->
-                    <div v-if="searchResults.length === 0"
-                        class="p-3 hover:bg-gray-100 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700 last:border-b-0 text-gray-500 dark:text-gray-400">
-                        Search for games by name. <br>
-                        Click "Add game to list" to add them to your selected games.
+                    <div class="text-xs mt-0.5" :class="game.is_running ? 'text-emerald-400' : 'text-slate-500'">
+                      {{ game.is_running ? '▶ يعمل الآن' : 'معطل' }}
                     </div>
+                  </div>
                 </div>
+                <button v-if="!game.is_running"
+                  @click.stop="removeGame(game)"
+                  class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-500/20 text-slate-600 hover:text-red-400 transition-colors duration-150 text-sm">
+                  ✕
+                </button>
+              </div>
             </div>
+          </TransitionGroup>
         </div>
 
-        <!-- Two-Column Layout with right fixed column -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 relative">
-            <!-- Left Column: Selected Games (scrollable) -->
-            <!--  max-h-[70vh] overflow-y-auto : add these somewhere to just scroll the content  -->
-            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
-                <h2
-                    class="text-xl font-bold text-gray-900 dark:text-white mb-4 sticky top-0 bg-white dark:bg-gray-800 py-2 z-10">
-                    Games</h2>
-                <div v-if="gameList.length === 0" class="text-gray-500 dark:text-gray-400 text-center py-8">
-                    No games selected. Search and add games from the search bar.
+        <!-- RIGHT: Actions ────────────────────────────── -->
+        <div class="lg:col-span-3 space-y-4" :key="forceKey">
+
+          <!-- Now Playing status ─────────────────────── -->
+          <Transition enter-from-class="opacity-0 scale-95" enter-active-class="transition-all duration-300"
+                      leave-to-class="opacity-0 scale-95" leave-active-class="transition-all duration-200">
+            <div v-if="playingGame"
+              class="card-glass rounded-xl p-4 playing-glow border border-emerald-500/20">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center text-xl shrink-0">🟢</div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-xs text-emerald-400 font-medium mb-0.5">يعمل الآن</div>
+                  <div class="font-semibold text-white truncate">{{ playingGame.name }}</div>
                 </div>
-                <div v-else class="space-y-4">
-                    <div v-for="game in gameList" :key="game.id" 
-                        class="p-3 border border-gray-200 dark:border-gray-700 rounded-lg
-                        hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors 
-                        duration-200 ease-in-out" 
-                        :class="[
-                            {
-                                'ring-1 ring-violet-500/40 shadow-[0px_0px_8px_2px_#8e51ff50] bg-gray-100 dark:bg-gray-700/40': selectedGame?.uid === game.uid,
-                            }
-                        ]" @click="selectGame(game)"
-                    >
-                        <div class="flex justify-between items-center">
-                            <div class="flex items-center gap-1">
-                                <div class="font-medium text-gray-800 dark:text-white">{{ game.name }}</div>
-                                <div class="relative inline-flex items-center">
-                                    <div class="w-2 h-2 bg-white absolute rounded-full" style="left: 50%; top: 50%; transform: translate(-50%, -50%)"></div>
-                                    <div class="relative inline-block">
-                                     <IconVerified class="w-5 h-5 text-indigo-500 dark:text-indigo-400"></IconVerified>
-                                    </div>
-                                </div>
-                            </div>
-                            <button @click="removeGameFromList(game)" class="text-red-300 hover:text-red-400"
-                                v-if="!game.is_running"> 
-                                Remove
-                            </button>
-                        </div>
-                        <div class="flex space-x-2 mt-2">
-                            <!-- Previously play button was here -->
-                            <div class="text-sm text-green-500 dark:text-green-400" v-if="game.is_running">
-                                Running
-                            </div>
-                        </div>
-                    </div>
+                <div class="flex items-center gap-1.5 text-xs text-emerald-400">
+                  <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                  مباشر
                 </div>
+              </div>
+            </div>
+          </Transition>
+
+          <!-- No game selected ───────────────────────── -->
+          <div v-if="!selectedGame" class="card-glass rounded-xl p-8 text-center">
+            <div class="text-3xl mb-3">👈</div>
+            <p class="text-sm text-slate-400">اختر لعبة من القائمة لعرض الإجراءات</p>
+          </div>
+
+          <!-- Game actions panel ─────────────────────── -->
+          <div v-if="selectedGame" class="card-glass rounded-xl p-5 space-y-5 fade-slide-in">
+
+            <!-- Game header -->
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 rounded-xl bg-violet-600/20 flex items-center justify-center text-2xl shrink-0">🎮</div>
+              <div class="flex-1 min-w-0">
+                <h3 class="font-bold text-white flex items-center gap-2 flex-wrap">
+                  {{ selectedGame.name }}
+                  <IconVerified class="w-4 h-4 text-violet-400 shrink-0" />
+                </h3>
+                <div class="text-xs text-slate-500 mt-0.5">App ID: {{ selectedGame.id }}</div>
+              </div>
+              <div v-if="selectedGame.is_running"
+                class="px-2.5 py-1 bg-emerald-500/15 border border-emerald-500/30 rounded-lg text-xs text-emerald-400 font-medium shrink-0">
+                ▶ يعمل
+              </div>
             </div>
 
-            <!-- Right Column: Game Actions (fixed position) -->
-            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow md:sticky md:top-4 self-start" :key="forceRerenderKey">
-                <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">Game Actions</h2>
-                <div class="space-y-4">
-                    <div class="text-gray-500 dark:text-gray-400 mb-2 text-sm" v-if="!selectedGame || selectedGame === null">
-                        Select a game from the left to perform actions.
-                    </div>
-                    
-                    <div v-if="selectedGame" class="text-gray-500 dark:text-gray-400 mb-4 text-sm">
-                        <strong>Name:</strong> {{ selectedGame.name }}<br>
-                        <strong>ID:</strong> {{ selectedGame.id }}<br>
-                        <strong v-if="selectedGame.aliases && selectedGame.aliases.length > 0">Aliases:</strong>
-                        <ul v-if="selectedGame.aliases && selectedGame.aliases.length > 0" class="list-disc list-inside" >
-                            <li v-for="alias in selectedGame.aliases" :key="alias"
-                                class="text-gray-500 dark:text-gray-400">
-                                <span class="font-mono">{{ alias }}</span>
-                            </li>
-                        </ul>
-                    </div>
-                    <button @click="handleTestRPC(selectedGame)"
-                        class="w-full py-2 rounded-lg bg-gray-600 hover:bg-gray-700 text-white">
-                        {{ isConnecting || isConnectedToRPC ? 'Disconnect to Discord Gateway' : 'Test RPC' }}
-                    </button>
-
-                    <!-- <button :disabled="!canCreateDummyGame(selectedGame)" @click="createDummyGame(selectedGame)" class="w-full py-2 rounded-lg"
-                        :class="[
-                            canCreateDummyGame(selectedGame)
-                                ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                                : 'bg-indigo-400 cursor-not-allowed text-gray-200'
-                        ]">
-                        Create Dummy Game
-                    </button> -->
-
-                    <!-- divider -->
-                    <div class="border-t border-gray-200 dark:border-gray-700 my-4"></div>
-
-                    <GameExecutables v-if="selectedGame" :game="selectedGame" 
-                        @play="playGame"
-                        @stop="stopPlaying"
-                        @install_and_play="installAndPlay"
-                    />
-
-                    <!-- <button @click="playGame(selectedGame)" :disabled="!canPlayGame(selectedGame)"
-                        class="w-full py-2 rounded-lg" :class="[
-                            !canPlayGame(selectedGame)
-                                ? 'bg-green-400 cursor-not-allowed text-gray-100'
-                                : 'bg-green-600 hover:bg-green-600 text-white'
-                        ]">
-                        {{ currentlyPlaying === selectedGame?.id ? 'Playing...' : 'Play' }}
-                    </button>
-
-                    <button @click="stopPlaying(selectedGame)" :disabled="!selectedGame?.is_running" :class="[
-                        'w-full py-2 rounded-lg',
-                        !selectedGame?.is_running
-                            ? 'bg-gray-400 cursor-not-allowed text-gray-200'
-                            : 'bg-red-600 hover:bg-red-700 text-white'
-                    ]">
-                        Stop Playing
-                    </button> -->
-                </div>
-
-                <!-- Divider -->
-                <div class="border-t border-gray-200 dark:border-gray-700 my-5"></div>
-
-                <div class="mt-6 p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
-                    <h3 class="font-medium text-gray-800 dark:text-white mb-2">Status</h3>
-                    <div class="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                        Check Discord to see if it displays that you are playing a game.
-                    </div>
-                    <div v-if="currentlyPlaying" class="text-gray-500 dark:text-gray-400">
-                        Currently playing: <span class="text-green-600"> {{gameList.find(g => g.id ===
-                            currentlyPlaying)?.name }}</span>
-                    </div>
-                    <div v-else class="text-gray-500 dark:text-gray-400">
-                        Not playing any game
-                    </div>
-                </div>
-
-                <div v-if="selectedGame" class="my-4">
-                    <h3 class="font-medium text-gray-800 dark:text-white mb-2">Game Info</h3>
-                    <!-- Game info -->
-                    <!-- <div class="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                    
-                        <strong>Aliases:</strong>
-                        <ul class="list-disc list-inside">
-                            <li v-for="alias in selectedGame.aliases" :key="alias"
-                                class="text-gray-500 dark:text-gray-400">
-                                <span class="font-mono">{{ alias }}</span>
-                            </li>
-                        </ul>
-                        <strong>Executables:</strong>
-                        <ul class="list-disc list-inside">
-                            <li v-for="exe in getExecutables(selectedGame)" :key="exe"
-                                class="text-gray-500 dark:text-gray-400">
-                                <span class="font-mono">{{ exe }}</span>
-                            </li>
-                        </ul>
-                    </div> -->
-                </div>
+            <!-- Aliases -->
+            <div v-if="selectedGame.aliases && selectedGame.aliases.length > 0"
+              class="flex flex-wrap gap-1.5">
+              <span v-for="a in selectedGame.aliases.slice(0, 6)" :key="a"
+                class="px-2 py-0.5 bg-slate-800/80 rounded-md text-xs text-slate-400 font-mono">
+                {{ a }}
+              </span>
             </div>
+
+            <!-- Divider -->
+            <div class="border-t border-slate-800/60"></div>
+
+            <!-- Executables / Play section -->
+            <div>
+              <div class="flex items-center gap-2 mb-3">
+                <span class="text-sm">⚙️</span>
+                <h4 class="text-sm font-medium text-slate-300">ملفات التشغيل</h4>
+              </div>
+              <GameExecutables
+                :game="selectedGame"
+                @play="playGame"
+                @stop="stopPlaying"
+                @install_and_play="installAndPlay"
+              />
+            </div>
+
+            <!-- Info note -->
+            <div class="flex items-start gap-2.5 px-3 py-2.5 bg-amber-500/8 border border-amber-500/15 rounded-lg">
+              <span class="text-base shrink-0 mt-0.5">⚠️</span>
+              <p class="text-xs text-amber-400/80 leading-relaxed">
+                ربط Discord RPC يتطلب تشغيل التطبيق على Windows. في المتصفح تظهر حالة التشغيل داخل الواجهة فقط.
+              </p>
+            </div>
+          </div>
+
+          <!-- Status card ───────────────────────────── -->
+          <div class="card-glass rounded-xl p-5">
+            <div class="flex items-center gap-2 mb-4">
+              <span class="text-sm">📊</span>
+              <h3 class="text-sm font-semibold text-slate-300">الإحصائيات</h3>
+            </div>
+            <div class="grid grid-cols-3 gap-3">
+              <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                <div class="text-xl font-bold text-violet-400">{{ gameDB.length.toLocaleString() }}</div>
+                <div class="text-xs text-slate-500 mt-0.5">لعبة متاحة</div>
+              </div>
+              <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                <div class="text-xl font-bold text-slate-200">{{ gameList.length }}</div>
+                <div class="text-xs text-slate-500 mt-0.5">مضافة</div>
+              </div>
+              <div class="bg-slate-800/50 rounded-lg p-3 text-center">
+                <div class="text-xl font-bold" :class="currentlyPlaying ? 'text-emerald-400' : 'text-slate-600'">
+                  {{ currentlyPlaying ? '1' : '0' }}
+                </div>
+                <div class="text-xs text-slate-500 mt-0.5">يعمل الآن</div>
+              </div>
+            </div>
+          </div>
+
         </div>
+      </div>
     </div>
+  </div>
 </template>
 
 <style scoped>
 @reference "../theme/style.css";
 
-.dialogStyle::backdrop {
-    @apply bg-black/70 backdrop-blur-xs;
-}
+.game-list-enter-active { animation: fadeSlideIn 0.25s ease both; }
+.game-list-leave-active { transition: all 0.2s ease; }
+.game-list-leave-to     { opacity: 0; transform: translateX(-10px); }
 </style>
