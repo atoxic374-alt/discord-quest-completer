@@ -3,6 +3,7 @@ import { computed, ComputedRef, Ref, ShallowRef, shallowRef } from 'vue'
 
 export const Pages = {
     HOME: 'home',
+    QUESTS: 'quests',
     PLAYGROUND: 'playground',
 } as const
 export type Pages = typeof Pages[keyof typeof Pages]
