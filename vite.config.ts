@@ -19,10 +19,11 @@ export default defineConfig({
     strictPort: true,
     host: '0.0.0.0',
     allowedHosts: true,
-    hmr: {
+    hmr: process.env.REPLIT_DEV_DOMAIN ? {
+      protocol: 'wss',
       clientPort: 443,
-      host: process.env.REPLIT_DEV_DOMAIN ?? 'localhost',
-    },
+      host: process.env.REPLIT_DEV_DOMAIN,
+    } : { clientPort: 443 },
     watch: {
       ignored: ["**/src-tauri/**"],
     },

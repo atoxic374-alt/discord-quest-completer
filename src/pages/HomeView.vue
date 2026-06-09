@@ -225,6 +225,18 @@ async function refreshQuests() {
   await questMgr.fetchQuestsForAccounts(accounts);
 }
 
+// Build a synthetic Game entry from quest data when not in gameDB
+function createSyntheticGame(appId: string, name: string): Game {
+  const exeName = name.toLowerCase().replace(/[^a-z0-9]/g, '') + '.exe';
+  return {
+    id: appId,
+    name,
+    executables: [{ name: exeName, os: 'win32', is_launcher: false, is_running: false, is_installed: false }],
+    is_running: false,
+    is_installed: false,
+  };
+}
+
 async function enrollAndPlay(questId: string, appId: string | null, gameName: string) {
   const connectedTokens = gateway.accounts.value
     .filter(a => a.gateway.status.value === 'connected')
@@ -235,28 +247,30 @@ async function enrollAndPlay(questId: string, appId: string | null, gameName: st
   }
   // Enroll
   await questMgr.autoEnroll(questId, connectedTokens);
-  // Find or add game to library
+  // Find or add game to library — always succeeds (synthetic fallback)
   if (appId) {
     let libGame = gameList.value.find(g => g.id === appId);
     if (!libGame) {
+      // 1. Try exact match by ID in gameDB
       const dbGame = gameDB.value.find(g => g.id === appId)
         ?? gameDB.value.find(g => g.name.toLowerCase().includes(gameName.toLowerCase().split(' ')[0]));
       if (dbGame) {
         addGame(dbGame);
-        libGame = gameList.value.find(g => g.id === dbGame.id);
+      } else {
+        // 2. Create synthetic game so the quest always works
+        const synthetic = createSyntheticGame(appId, gameName);
+        addGame(synthetic);
+        addLog('info', `Created entry for "${gameName}" (new/unlisted game)`);
       }
+      libGame = gameList.value.find(g => g.id === appId);
     }
     if (libGame) {
       selectGame(libGame);
       const exe = libGame.executables[0];
       if (exe) await installAndPlay({ game: libGame, executable: exe });
-      // Start heartbeat after enrolling
       questMgr.startHeartbeat(questId, connectedTokens);
-    } else {
-      addLog('warning', `Game "${gameName}" not found in DB — search manually and play`);
     }
   }
-  // Refresh quests to show updated enrollment status
   setTimeout(() => refreshQuests(), 2000);
 }
 
@@ -320,13 +334,19 @@ const suggestedQuestGames = computed<Game[]>(() => {
   return result;
 });
 
-// Auto-match: does any live quest game exist in our DB?
+// Auto-match: always returns a game — synthetic if not in gameDB
 const liveQuestsWithDBMatch = computed(() =>
   questMgr.liveQuests.value.map(q => {
     const appId = questMgr.getQuestApplicationId(q);
-    const dbMatch = appId ? gameDB.value.find(g => g.id === appId) : null;
+    const questName = questMgr.getQuestName(q);
+    const dbMatch = appId
+      ? (gameDB.value.find(g => g.id === appId)
+          ?? gameDB.value.find(g => g.name.toLowerCase().includes(questName.toLowerCase().split(' ')[0]))
+          ?? createSyntheticGame(appId, questName))
+      : null;
     const libMatch = appId ? gameList.value.find(g => g.id === appId) : null;
-    return { quest: q, dbMatch, libMatch };
+    const isSynthetic = dbMatch ? !gameDB.value.find(g => g.id === dbMatch.id) : false;
+    return { quest: q, dbMatch, libMatch, isSynthetic };
   })
 );
 
@@ -907,7 +927,7 @@ onMounted(() => {
               </span>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div v-for="{quest, dbMatch, libMatch} in liveQuestsWithDBMatch" :key="quest.id"
+              <div v-for="{quest, dbMatch, libMatch, isSynthetic} in liveQuestsWithDBMatch" :key="quest.id"
                 class="rounded-xl p-4 fade-slide-in transition-all duration-200"
                 :style="`background:var(--bg-3);border:1px solid ${questMgr.isCompleted(quest)?'rgba(31,138,90,0.3)':questMgr.isEnrolled(quest)?'rgba(212,64,110,0.25)':'rgba(196,122,24,0.2)'};`">
 
@@ -925,14 +945,14 @@ onMounted(() => {
                       <span v-if="timeUntil(quest.expires_at)" class="text-xs" style="color:var(--warn);">
                         {{ timeUntil(quest.expires_at) }}
                       </span>
-                      <!-- In DB badge -->
-                      <span v-if="dbMatch" class="text-xs px-1.5 py-0.5 rounded-full"
-                        style="background:rgba(31,138,90,0.12);border:1px solid rgba(31,138,90,0.2);color:var(--success);">
-                        In database
+                      <!-- Game status badge — always shows something positive -->
+                      <span v-if="isSynthetic" class="text-xs px-1.5 py-0.5 rounded-full"
+                        style="background:rgba(88,101,242,0.12);border:1px solid rgba(88,101,242,0.25);color:#7289da;">
+                        New Game
                       </span>
                       <span v-else class="text-xs px-1.5 py-0.5 rounded-full"
-                        style="background:rgba(196,48,64,0.12);border:1px solid rgba(196,48,64,0.2);color:#e05060;">
-                        Not in DB
+                        style="background:rgba(31,138,90,0.12);border:1px solid rgba(31,138,90,0.2);color:var(--success);">
+                        In database
                       </span>
                     </div>
                   </div>

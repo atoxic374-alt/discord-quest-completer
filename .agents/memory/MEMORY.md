@@ -1,3 +1,4 @@
 - [Vite config complexity](vite-config.md) — complex async plugins in vite.config.ts break the dev server; keep it simple and sync.
 - [Game list source](game-list-source.md) — GitHub Pages mirror has CORS open, fetch directly from browser; no proxy needed.
 - [Ens Quests design system](ens-design.md) — wine theme #47072a, all icons SVG via EnsIcons.vue, no emoji, single-page layout with persistent localStorage/sessionStorage.
+- [Replit startup fix](replit-startup.md) — rust-analyzer eats ~5GB RAM; kill it before package install. Use bun (not npm/pnpm). Remove packageManager field from package.json.
