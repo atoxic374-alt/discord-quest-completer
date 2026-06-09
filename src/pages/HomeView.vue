@@ -556,7 +556,7 @@ onMounted(() => {
             <div class="font-bold text-xl font-mono"
               :style="`color:${gateway.questCompleted.value?'var(--success)':'var(--accent-b)'}`">
               {{ gateway.questTimeElapsed.value }}
-              <span class="text-sm font-normal" style="color:var(--text-3);"> / 15:00</span>
+              <span class="text-sm font-normal" style="color:var(--text-3);"> / {{ gateway.questDurationLabel.value }}</span>
             </div>
             <div v-if="!gateway.questCompleted.value" class="text-xs mt-0.5" style="color:var(--text-2);">
               {{ gateway.questTimeLeft.value }} remaining
@@ -578,7 +578,7 @@ onMounted(() => {
             :style="`width:${gateway.questProgress.value}%;background:${gateway.questCompleted.value?'var(--success)':'linear-gradient(90deg,var(--accent),var(--accent-b))'}`"></div>
         </div>
         <div class="flex justify-between text-xs mt-1.5" style="color:var(--text-3);">
-          <span>0:00</span><span>{{ Math.round(gateway.questProgress.value) }}%</span><span>15:00</span>
+          <span>0:00</span><span>{{ Math.round(gateway.questProgress.value) }}%</span><span>{{ gateway.questDurationLabel.value }}</span>
         </div>
         <div v-if="gameQueue.length" class="mt-3 flex items-center gap-2 text-xs" style="color:var(--text-2);">
           <EnsIcons name="library" :size="13" style="color:var(--accent-b);"/>

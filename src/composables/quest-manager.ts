@@ -82,6 +82,8 @@ export async function fetchQuestsWithToken(token: string): Promise<DiscordQuest[
     signal:   AbortSignal.timeout(12000),
   });
   if (res.status === 401 || res.status === 403) throw new Error('auth_required');
+  // 404 = no active quests for this account (Discord's documented behavior)
+  if (res.status === 404) return [];
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   return Array.isArray(data) ? data : (data.quests ?? data.items ?? []);
