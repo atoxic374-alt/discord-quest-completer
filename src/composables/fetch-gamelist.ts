@@ -38,37 +38,43 @@ export function useFetchGameList() {
 
   async function fetchGameList() {
     if (isLoading.value) return;
-    isLoading.value   = true;
+    isLoading.value    = true;
     allFetchDone.value = false;
-    fetchError.value  = null;
+    fetchError.value   = null;
     addLog('info', 'Loading game database…');
 
-    // 1. Try GitHub mirror and bundled fallback in parallel
-    const [mirrorResult, bundledModule] = await Promise.all([
-      _tryFetch(GH_MIRROR_URL, 'GitHub mirror'),
-      import('../assets/gamelist.json').then(m => m.default as unknown as Game[]).catch(() => null),
-    ]);
+    // Safety net: mark done after 15s even if a fetch hangs beyond its timeout
+    const safetyTimer = setTimeout(() => { allFetchDone.value = true; }, 15_000);
 
-    if (mirrorResult) {
-      gameDB.value = mirrorResult;
-    } else {
-      // 2. Try Discord API directly
-      const discordResult = await _tryFetch(DISCORD_DETECTABLE_URL, 'Discord API');
-      if (discordResult) {
-        gameDB.value = discordResult;
-      } else if (bundledModule && isValidGameList(bundledModule)) {
-        // 3. Bundled JSON fallback
-        gameDB.value = bundledModule;
-        addLog('warning', `Using bundled fallback: ${bundledModule.length} games`);
+    try {
+      // 1. Try GitHub mirror and bundled fallback in parallel
+      const [mirrorResult, bundledModule] = await Promise.all([
+        _tryFetch(GH_MIRROR_URL, 'GitHub mirror'),
+        import('../assets/gamelist.json').then(m => m.default as unknown as Game[]).catch(() => null),
+      ]);
+
+      if (mirrorResult) {
+        gameDB.value = mirrorResult;
       } else {
-        fetchError.value = 'Could not load game database from any source';
-        addLog('error', fetchError.value);
+        // 2. Try Discord API directly
+        const discordResult = await _tryFetch(DISCORD_DETECTABLE_URL, 'Discord API');
+        if (discordResult) {
+          gameDB.value = discordResult;
+        } else if (bundledModule && isValidGameList(bundledModule)) {
+          // 3. Bundled JSON fallback
+          gameDB.value = bundledModule;
+          addLog('warning', `Using bundled fallback: ${bundledModule.length} games`);
+        } else {
+          fetchError.value = 'Could not load game database from any source';
+          addLog('error', fetchError.value);
+        }
       }
+    } finally {
+      isLoading.value = false;
+      clearTimeout(safetyTimer);
+      // Small delay so the UI shows the final count before hiding the banner
+      setTimeout(() => { allFetchDone.value = true; }, DONE_DELAY);
     }
-
-    isLoading.value = false;
-    // Small delay so the UI shows the final count before hiding the banner
-    setTimeout(() => { allFetchDone.value = true; }, DONE_DELAY);
   }
 
   tryOnMounted(() => fetchGameList());

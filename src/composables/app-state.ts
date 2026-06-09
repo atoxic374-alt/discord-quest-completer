@@ -34,12 +34,9 @@ function saveLogsToStorage(logs: AppLogObject[]) {
 }
 
 export interface UseGlobalStateReturn {
-  page:        ShallowRef<Pages>;
-  count:       ShallowRef<number>;
-  doubleCount: ComputedRef<number>;
-  setPage:     (newPage: Pages) => void;
-  increment:   () => void;
-  logs:        ShallowRef<AppLogObject[]>;
+  page:      ShallowRef<Pages>;
+  setPage:   (newPage: Pages) => void;
+  logs:      ShallowRef<AppLogObject[]>;
   addLog: {
     (type: 'info' | 'error' | 'warning' | 'debug', newLog: string): void;
     (newLog: string): void;
@@ -48,13 +45,9 @@ export interface UseGlobalStateReturn {
 }
 
 export const useGlobalState = createGlobalState(() => {
-  const page  = shallowRef<Pages>(Pages.HOME);
-  const count = shallowRef(0);
-  const logs  = shallowRef<AppLogObject[]>(loadLogsFromStorage());
+  const page = shallowRef<Pages>(Pages.HOME);
+  const logs = shallowRef<AppLogObject[]>(loadLogsFromStorage());
 
-  const doubleCount = computed(() => count.value * 2);
-
-  function increment() { count.value++; }
   function setPage(newPage: Pages) { page.value = newPage; }
 
   function addLog(type: string | 'info' | 'error' | 'warning' | 'debug', newLog?: string) {
@@ -74,5 +67,5 @@ export const useGlobalState = createGlobalState(() => {
     try { sessionStorage.removeItem(LOG_STORAGE_KEY); } catch { /* ignore */ }
   }
 
-  return { page, count, doubleCount, setPage, increment, logs, addLog, clearLogs } as UseGlobalStateReturn;
+  return { page, setPage, logs, addLog, clearLogs } as UseGlobalStateReturn;
 });

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue';
+import { computed, ref, onMounted, watch } from 'vue';
 import { useFetchGameList }           from '@/composables/fetch-gamelist';
 import { useGatewayManager }          from '@/composables/use-gateway';
 import { useQuestManager }            from '@/composables/quest-manager';
@@ -35,38 +35,71 @@ watch(
 );
 
 // ── Dynamic quest ↔ game matching ─────────────────────────────────────────
-// For each live quest: look up game by application_id from the full gameDB
+// Short / generic words that produce false-positive matches when used alone
+const STOP_WORDS = new Set(['the', 'and', 'for', 'of', 'in', 'to', 'a', 'an',
+  'war', 'age', 'new', 'old', 'big', 'pro', 'max', 'one', 'two',
+  'battle', 'legend', 'legends', 'world', 'online', 'game', 'games']);
+
+function _nameMatch(gameDB: Game[], name: string): Game | null {
+  const nameLower = name.toLowerCase();
+  // Try progressively longer substrings: 3-word, 2-word, then single meaningful word
+  const words = nameLower.split(/\s+/);
+  for (let len = Math.min(3, words.length); len >= 1; len--) {
+    for (let i = 0; i <= words.length - len; i++) {
+      const phrase = words.slice(i, i + len).join(' ');
+      // Skip phrases that are too short or are a stop word
+      if (phrase.length < 4) continue;
+      if (len === 1 && STOP_WORDS.has(phrase)) continue;
+      const hit = gameDB.find(g => g.name.toLowerCase().includes(phrase));
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+function _syntheticGame(appId: string, name: string): Game {
+  const exeName = name.toLowerCase().replace(/[^a-z0-9]/g, '') + '.exe';
+  return {
+    id: appId, name,
+    executables: [{ name: exeName, os: 'win32', is_launcher: false, is_running: false, is_installed: false }],
+    is_running: false, is_installed: false,
+  };
+}
+
 const questsWithGame = computed(() =>
   questMgr.liveQuests.value.map(q => {
     const appId = questMgr.getQuestApplicationId(q);
-    const name  = questMgr.getQuestName(q).toLowerCase();
+    const name  = questMgr.getQuestName(q);
 
     // 1. Exact ID match
-    let match = appId ? gameDB.value.find(g => g.id === appId) ?? null : null;
+    let game: Game | null = appId ? gameDB.value.find(g => g.id === appId) ?? null : null;
+    let isSynthetic = false;
 
-    // 2. Name fuzzy match (first word of quest name)
-    if (!match && name) {
-      const firstWord = name.split(' ')[0];
-      match = gameDB.value.find(g =>
-        g.name.toLowerCase().includes(firstWord) || firstWord.includes(g.name.toLowerCase().split(' ')[0])
-      ) ?? null;
-    }
+    // 2. Multi-word name match (skips stop/short words)
+    if (!game && name) game = _nameMatch(gameDB.value, name);
 
-    return { quest: q, game: match };
+    // 3. Synthetic fallback so enroll always works
+    if (!game && appId) { game = _syntheticGame(appId, name); isSynthetic = true; }
+
+    return { quest: q, game, isSynthetic };
   })
 );
 
 // ── Quick-add to library via sessionStorage ───────────────────────────────
-function getAddedIds(): Set<string> {
+// Tracked as a reactive counter so the computed below only re-reads storage on actual changes
+const _pendingVersion = ref(0);
+const addedIds = computed<Set<string>>(() => {
+  void _pendingVersion.value;
   try { return new Set((JSON.parse(sessionStorage.getItem('pendingGames') ?? '[]') as Game[]).map(g => g.id)); }
-  catch { return new Set(); }
-}
+  catch { return new Set<string>(); }
+});
 
 function quickAdd(game: Game) {
   const stored: Game[] = JSON.parse(sessionStorage.getItem('pendingGames') ?? '[]');
   if (stored.some(g => g.id === game.id)) return;
   stored.push({ ...game, uid: randomString() });
   sessionStorage.setItem('pendingGames', JSON.stringify(stored));
+  _pendingVersion.value++;
   addLog('info', `Added to library: ${game.name}`);
 }
 
@@ -192,7 +225,7 @@ onMounted(() => {
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div v-for="{quest, game} in questsWithGame" :key="quest.id"
+          <div v-for="{quest, game, isSynthetic} in questsWithGame" :key="quest.id"
             class="card-glass rounded-xl p-5 transition-all duration-200 fade-slide-in"
             :style="`border:1px solid ${questMgr.isCompleted(quest)?'rgba(31,138,90,0.35)':questMgr.isEnrolled(quest)?'rgba(212,64,110,0.3)':'rgba(196,122,24,0.2)'}`">
 
@@ -235,15 +268,17 @@ onMounted(() => {
 
             <!-- Auto-detected game ─────────── -->
             <div class="mb-4 rounded-xl p-3"
-              :style="game
-                ? 'background:rgba(31,138,90,0.08);border:1px solid rgba(31,138,90,0.18);'
-                : 'background:rgba(196,48,64,0.06);border:1px solid rgba(196,48,64,0.15);'">
+              :style="isSynthetic
+                ? 'background:rgba(196,122,24,0.06);border:1px solid rgba(196,122,24,0.18);'
+                : game
+                  ? 'background:rgba(31,138,90,0.08);border:1px solid rgba(31,138,90,0.18);'
+                  : 'background:rgba(196,48,64,0.06);border:1px solid rgba(196,48,64,0.15);'">
               <div class="flex items-center gap-2">
-                <EnsIcons :name="game?'gamepad':'search'" :size="14"
-                  :style="`color:${game?'var(--success)':'var(--text-3)'}`"/>
+                <EnsIcons :name="game ? (isSynthetic ? 'warning' : 'gamepad') : 'search'" :size="14"
+                  :style="`color:${isSynthetic ? 'var(--warn)' : game ? 'var(--success)' : 'var(--text-3)'}`"/>
                 <span class="text-xs font-semibold"
-                  :style="`color:${game?'var(--success)':'var(--text-3)'}`">
-                  {{ game ? 'لعبة مكتشفة تلقائياً' : 'لم يُعثر في قاعدة البيانات' }}
+                  :style="`color:${isSynthetic ? 'var(--warn)' : game ? 'var(--success)' : 'var(--text-3)'}`">
+                  {{ isSynthetic ? 'لعبة غير مدرجة — سيُنشأ ملف تلقائي' : game ? 'لعبة مكتشفة تلقائياً' : 'لم يُعثر في قاعدة البيانات' }}
                 </span>
               </div>
               <template v-if="game">
@@ -253,15 +288,15 @@ onMounted(() => {
                     <div class="text-xs mt-0.5 font-mono" style="color:var(--text-3);">ID: {{ game.id }}</div>
                   </div>
                   <button @click="quickAdd(game)"
-                    :disabled="getAddedIds().has(game.id)"
+                    :disabled="addedIds.has(game.id)"
                     class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-60"
-                    :style="getAddedIds().has(game.id)
+                    :style="addedIds.has(game.id)
                       ? 'background:rgba(31,138,90,0.15);border:1px solid rgba(31,138,90,0.25);color:var(--success);'
                       : 'background:rgba(124,29,74,0.25);border:1px solid rgba(212,64,110,0.25);color:var(--accent-b);'">
-                    {{ getAddedIds().has(game.id) ? '✓ في المكتبة' : '+ أضف للمكتبة' }}
+                    {{ addedIds.has(game.id) ? '✓ في المكتبة' : '+ أضف للمكتبة' }}
                   </button>
                 </div>
-                <div class="mt-2 text-xs" style="color:var(--text-3);">
+                <div v-if="!isSynthetic" class="mt-2 text-xs" style="color:var(--text-3);">
                   {{ game.executables?.length ?? 0 }} executable{{ (game.executables?.length ?? 0) !== 1 ? 's' : '' }}
                 </div>
               </template>

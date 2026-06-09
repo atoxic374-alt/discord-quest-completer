@@ -132,6 +132,7 @@ export function useDiscordGateway() {
           errorMsg.value = 'Invalid session — check your token.';
           intentionalClose = true; // don't auto-reconnect on bad token
           token = null;
+          _clearReconnectTimer(); // cancel any pending reconnect before closing
           disconnect();
           break;
         }

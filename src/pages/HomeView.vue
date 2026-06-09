@@ -136,7 +136,15 @@ async function playGame({ game, executable }: { game: Game; executable: GameExec
   g.is_running = true; e.is_running = true;
   currentlyPlayingUid.value = g.uid!;
 
-  const ok = gateway.startPlaying({ name: g.name, application_id: g.id, type: 0 });
+  // Look up the active enrolled quest for this game to get its real duration
+  const matchingQuest = questMgr.liveQuests.value.find(q =>
+    questMgr.getQuestApplicationId(q) === g.id &&
+    questMgr.isEnrolled(q) &&
+    !questMgr.isCompleted(q)
+  );
+  const durationSecs = matchingQuest ? questMgr.getQuestDuration(matchingQuest) : undefined;
+
+  const ok = gateway.startPlaying({ name: g.name, application_id: g.id, type: 0 }, durationSecs);
   if (ok) addLog('info', `Now playing: ${g.name} — presence active`);
   else    addLog('warning', `Playing ${g.name} locally — add a token to show on Discord`);
 
@@ -151,7 +159,11 @@ function _startHeartbeatsForGame(appId: string) {
   if (!connectedTokens.length) return;
 
   for (const q of questMgr.liveQuests.value) {
-    if (questMgr.getQuestApplicationId(q) === appId && questMgr.isEnrolled(q)) {
+    if (
+      questMgr.getQuestApplicationId(q) === appId &&
+      questMgr.isEnrolled(q) &&
+      !questMgr.isCompleted(q)
+    ) {
       questMgr.startHeartbeat(q.id, connectedTokens);
     }
   }
