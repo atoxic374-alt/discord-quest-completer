@@ -1,10 +1,39 @@
 <template>
     <div class="p-4 space-y-4 container mx-auto">
-        <button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-            @click="discordTest">Discord Test
-
-            connected: {{ isConnected }}
-        </button>
+        <div class="p-4 border rounded-lg dark:border-gray-600">
+            <h2 class="text-lg font-semibold mb-3 text-gray-700 dark:text-gray-300">Discord Quest Games</h2>
+            <div v-if="isLoadingQuests" class="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                <div class="h-2 w-2 bg-green-500 rounded-full animate-pulse"></div>
+                Fetching current Discord Quests...
+            </div>
+            <div v-else-if="questError" class="text-sm text-yellow-500">
+                ⚠ {{ questError }}
+            </div>
+            <div v-else-if="quests.length > 0" class="space-y-2">
+                <div v-for="quest in quests" :key="quest.id"
+                    class="flex items-center gap-3 p-2 rounded-lg bg-gray-100 dark:bg-gray-700">
+                    <img v-if="quest.config?.application_icon" 
+                        :src="`https://cdn.discordapp.com/app-icons/${quest.config.application_id}/${quest.config.application_icon}.png?size=32`"
+                        class="w-8 h-8 rounded" 
+                        :alt="quest.config?.application_name"
+                        @error="(e: Event) => (e.target as HTMLImageElement).style.display = 'none'"
+                    />
+                    <div>
+                        <div class="font-medium text-sm text-gray-800 dark:text-white">
+                            {{ quest.config?.application_name || 'Unknown Game' }}
+                        </div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">
+                            Quest ends: {{ quest.expires_at ? new Date(quest.expires_at).toLocaleDateString() : 'Unknown' }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div v-else class="text-sm text-gray-500 dark:text-gray-400">No active quests found.</div>
+            <button @click="loadQuests"
+                class="mt-3 px-3 py-1 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-md">
+                Refresh Quests
+            </button>
+        </div>
 
         <!-- Logs Section -->
         <div class="mt-4 p-4 border rounded text-gray-700 dark:text-gray-300 dark:border-gray-600">
@@ -15,10 +44,6 @@
             </div>
 
             <div class="max-h-64 overflow-y-auto p-2 rounded">
-                <!-- <div v-if="logs.length === 0" class="text-gray-400">No logs available.</div>
-                <ul v-else class="list-none">
-                    <li v-for="(log, index) in logs" :key="index" class="text-sm text-gray-400">{{ log }}</li>
-                </ul> -->
                 <div v-if="logs.length === 0" class="text-gray-400">No logs available.</div>
                 <ul v-else class="list-none">
                     <li v-for="(log, index) in logs" :key="index" class="text-sm">
@@ -35,81 +60,54 @@
                     </li>
                 </ul>
             </div>
-
-
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
-import { emit } from '@tauri-apps/api/event';
 import { useGlobalState } from '@/composables/app-state';
-
-const ActivityKind = {
-    Playing: 0,
-    Listening: 2,
-    Watching: 3,
-    Competing: 5
-} as const;
-
-const isConnected = ref(false);
 
 const { logs, addLog, clearLogs } = useGlobalState();
 
-function discordTest() {
-
-    const appIdCode = '1361728268088381706';
-
-    if (isConnected.value) {
-        console.log('Disconnecting from Discord');
-        emit('event_disconnect');
-        isConnected.value = false;
-        return;
-    }
-
-    invoke('connect_to_discord_rpc_3', {
-        activity_json: JSON.stringify({
-            app_id: appIdCode,
-            details: 'Jhabol',
-            // details: 'xmonad -> dwm -> spectrwm -> i3 -> bspwm -> qtile -> hyrpland -> xfce -> gnome -> sway',
-            state: "/jhabol",
-            activity_kind: ActivityKind.Watching,
-            timestamp: createAgoTimestamp('1h 30m')
-        }),
-        action: 'connect',
-    });
-    isConnected.value = true;
+interface DiscordQuest {
+    id: string;
+    expires_at?: string;
+    config?: {
+        application_id?: string;
+        application_name?: string;
+        application_icon?: string;
+    };
 }
 
-// function to create timestamp behind current time.
-// example: input is `4h 30m` means timestamp should start from 4 hours and 30 minutes behind current time.
-function createAgoTimestamp(input: string) {
-    const time = input.split(' ');
-    let hours = 0;
-    let minutes = 0;
+const quests = ref<DiscordQuest[]>([]);
+const isLoadingQuests = ref(false);
+const questError = ref<string | null>(null);
 
-    for (let i = 0; i < time.length; i++) {
-        if (time[i].includes('h')) {
-            hours = parseInt(time[i]);
-        } else if (time[i].includes('m')) {
-            minutes = parseInt(time[i]);
+async function loadQuests() {
+    isLoadingQuests.value = true;
+    questError.value = null;
+    try {
+        const res = await fetch('/api/quests', { signal: AbortSignal.timeout(10000) });
+        if (!res.ok) {
+            questError.value = `Could not fetch quests (HTTP ${res.status}). Discord may require login.`;
+            addLog('warning', 'Quests endpoint returned ' + res.status);
+            return;
         }
+        const data = await res.json();
+        quests.value = Array.isArray(data) ? data : (data.quests ?? []);
+        addLog('✓ Loaded ' + quests.value.length + ' active Discord quests.');
+    } catch (e: any) {
+        questError.value = 'Failed to fetch quests: ' + e.message;
+        addLog('error', questError.value);
+    } finally {
+        isLoadingQuests.value = false;
     }
-
-    const date = new Date();
-    date.setHours(date.getHours() - hours);
-    date.setMinutes(date.getMinutes() - minutes);
-
-    return Math.floor(date.getTime() / 1000);
 }
-
 
 onMounted(() => {
-
-})
-
+    loadQuests();
+});
 </script>
 
 <style scoped></style>

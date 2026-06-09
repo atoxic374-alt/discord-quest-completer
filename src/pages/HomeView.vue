@@ -1,17 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, useTemplateRef, shallowRef, provide, nextTick, triggerRef } from 'vue';
-// import gameListData from '../assets/gamelist.json';
 import { onClickOutside, refDebounced, tryOnMounted } from '@vueuse/core';
 import { useFuse } from '@vueuse/integrations/useFuse'
-import { invoke } from '@tauri-apps/api/core';
 import { randomString } from '@/utils/random-string';
 import { GameActionsProvider, GameExecutable, type Game } from '@/types/types';
 import IconVerified from '@/components/IconVerified.vue';
 import { isEmpty } from 'lodash-es';
 import GameExecutables from '@/components/GameExecutables.vue';
 import { GameActionsKey } from '@/constants/constants';
-import { path } from '@tauri-apps/api';
-import { emit } from '@tauri-apps/api/event';
 import { useFetchGameList } from '@/composables/fetch-gamelist';
 import { UseFuseOptions } from '@vueuse/integrations';
 import Fuse from 'fuse.js';
@@ -206,8 +202,7 @@ async function createDummyGame(game: Game | null, executable: GameExecutable) {
             app_id: Number(gameToInstall.id),
         }
         console.log(payload);
-        const result = await invoke('create_fake_game', payload)
-        console.log('Game created:', result);
+        addLog('info', `[Browser] Game setup noted: ${gameToInstall.name}`);
         gameToInstall.is_installed = true;
         executableItem.is_installed = true;
         return true;
@@ -248,9 +243,8 @@ async function playGame({game, executable}: {game: Game, executable: GameExecuta
                 executable_name: executable.filename,
                 path_len: executable.segments,
                 app_id: Number(gameToPlay.id),
-                exec_path: path.join(executable.path!, executable.filename!),
             } 
-            await invoke('run_background_process', payload);
+            addLog('info', `[Browser] Run noted for: ${game.name}`);
             gameToPlay.is_running = true;
             executableItem.is_running = true; 
         }
@@ -275,18 +269,8 @@ async function stopPlaying({game, executable}: {game: Game, executable: GameExec
     const executableItem = gameToPlay?.executables.find(exe => exe.name === executable.name);
     if (gameToPlay && executableItem) {
         try {
-            await invoke('stop_process', {
-                exec_name: executable.filename!
-            })
-            addLog('info', `Stopped game process: ${game.name}`);
+            addLog('info', `Stopped game: ${game.name}`);
             addLog('info', `Stopped Executable: ${executable.name}`);
-        } catch (error) {
-            console.error('Failed to stop game process:', error);
-            const errorMessage = (error instanceof Error) ? error.message : String(error);
-            addLog('error', 'Failed to stop game process' + errorMessage);
-            // Even if stopping fails, we still update the state
-            gameToPlay.is_running = false;
-            executableItem.is_running = false;
         } finally {
             gameToPlay.is_running = false;
             executableItem.is_running = false;
@@ -314,8 +298,6 @@ async function handleTestRPC(game: Game | null) {
         //     }),
         //     action: 'disconnect',
         // })
-        emit('event_disconnect');
-        
         isConnectedToRPC.value = false;
         game!.is_running = false;
         currentlyPlaying.value = null;
@@ -334,20 +316,9 @@ async function continueRPCRisk(game: Game | null) {
     if (gameToTest) {
         console.log('Testing RPC for game:', gameToTest);
         isConnecting.value = true;
-        // invoke('connect_to_discord_rpc_2', { app_id: gameToTest.id, discord_state: "connect" })
-        invoke('connect_to_discord_rpc_3', {
-            activity_json: JSON.stringify({
-                app_id: gameToTest.id,
-            }),
-            action: 'connect',
-        })
-        .then(() => {
-            isConnectedToRPC.value = true;
-            gameToTest.is_running = true;
-            currentlyPlaying.value = gameToTest.id;
-            isConnecting.value = false;
-        })
-
+        addLog('warning', 'RPC connect requires the desktop app (Tauri). Not available in browser.');
+        isConnectedToRPC.value = false;
+        isConnecting.value = false;
         hideDialog();
     }
 }
