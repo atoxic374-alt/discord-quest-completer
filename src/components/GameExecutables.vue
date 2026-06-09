@@ -43,7 +43,7 @@
         <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
           <polygon points="5,3 19,12 5,21"/>
         </svg>
-        {{ exe.is_running ? 'Stop' : 'Play' }}
+        {{ exe.is_running ? 'Sttop' : 'Play' }}
       </button>
     </div>
   </div>
