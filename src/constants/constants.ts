@@ -1,4 +1,4 @@
-import { Game } from "@/types/types";
+import type { GameActionsProvider } from "@/types/types";
 import { InjectionKey } from "vue";
 
 export const EXECUTABLE_OS = {
@@ -9,4 +9,4 @@ export const EXECUTABLE_OS = {
     IOS: 'ios',
 } as const;
 
-export const GameActionsKey = Symbol() as InjectionKey<string>;
+export const GameActionsKey = Symbol() as InjectionKey<GameActionsProvider>;

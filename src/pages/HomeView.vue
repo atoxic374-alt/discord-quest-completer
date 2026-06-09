@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, useTemplateRef, shallowRef, provide } from 'vue';
+import { ref, computed, useTemplateRef, shallowRef, provide, onMounted, watch } from 'vue';
 import { onClickOutside, refDebounced } from '@vueuse/core';
 import { useFuse } from '@vueuse/integrations/useFuse';
 import { randomString } from '@/utils/random-string';
@@ -11,32 +11,34 @@ import { useFetchGameList } from '@/composables/fetch-gamelist';
 import { UseFuseOptions } from '@vueuse/integrations';
 import Fuse from 'fuse.js';
 import { useGlobalState } from '@/composables/app-state';
+import { useGatewayManager } from '@/composables/use-gateway';
 
 const { addLog } = useGlobalState();
+const gateway = useGatewayManager();
 
 const {
   gameDB, isLoadingGH, isReadyGH, allFetchDone, fetchGameList
 } = useFetchGameList();
 
 // ── Search ──────────────────────────────────────────────
-const searchQuery      = shallowRef('');
-const debouncedQuery   = refDebounced(searchQuery, 250);
-const searchOpen       = ref(false);
-const isOnResults      = ref(false);
-const searchRef        = useTemplateRef<HTMLElement>('searchRef');
+const searchQuery    = shallowRef('');
+const debouncedQuery = refDebounced(searchQuery, 250);
+const searchOpen     = ref(false);
+const isOnResults    = ref(false);
+const searchRef      = useTemplateRef<HTMLElement>('searchRef');
 
 onClickOutside(searchRef, () => { searchOpen.value = false; });
 
-const COPYRIGHT_SYMBOL = '\u00A9';
-const TRADEMARK_SYMBOL = '\u2122';
+const COPYRIGHT_SYMBOL  = '\u00A9';
+const TRADEMARK_SYMBOL  = '\u2122';
 const REGISTERED_SYMBOL = '\u00AE';
 const ignoredRe = new RegExp(`[${[COPYRIGHT_SYMBOL, TRADEMARK_SYMBOL, REGISTERED_SYMBOL].join('')}]`, 'g');
 
 const fuseOpts = computed<UseFuseOptions<Game>>(() => ({
   fuseOptions: {
     keys: [
-      { name: 'name', weight: 0.7 },
-      { name: 'aliases', weight: 0.2 },
+      { name: 'name',             weight: 0.7 },
+      { name: 'aliases',          weight: 0.2 },
       { name: 'executables.name', weight: 0.1 },
     ],
     getFn: (obj: any, path: string[] | string) => {
@@ -44,10 +46,10 @@ const fuseOpts = computed<UseFuseOptions<Game>>(() => ({
       return typeof v === 'string' ? v.replace(ignoredRe, '') : v;
     },
     isCaseSensitive: false,
-    threshold: 0.4,
-    includeScore: true,
+    threshold:       0.4,
+    includeScore:    true,
   },
-  resultLimit: 15,
+  resultLimit:          15,
   matchAllWhenSearchEmpty: false,
 }));
 
@@ -56,50 +58,114 @@ const { results: searchResults } = useFuse(debouncedQuery, gameDB, fuseOpts);
 // ── Selected games ───────────────────────────────────────
 const gameList       = ref<Game[]>([]);
 const selectedGameId = ref<string | null | undefined>(null);
-const currentlyPlaying = ref<string | null>(null);
+const currentlyPlayingUid = ref<string | null>(null);
 const forceKey       = ref(0);
 
 const selectedGame = computed(() =>
   gameList.value.find(g => g.uid === selectedGameId.value) ?? null
 );
+const playingGame = computed(() =>
+  gameList.value.find(g => g.uid === currentlyPlayingUid.value) ?? null
+);
 
 function addGame(game: Game) {
   if (!gameList.value.some(g => g.id === game.id)) {
-    gameList.value.push({ uid: randomString(), ...game });
+    gameList.value.push({ ...game, uid: randomString(), is_installed: false, is_running: false });
   }
   searchOpen.value = false;
   searchQuery.value = '';
 }
+
 function removeGame(game: Game) {
+  if (game.uid === currentlyPlayingUid.value) {
+    stopPlaying({ game, executable: game.executables[0] ?? { name: '', os: '', is_launcher: false } });
+  }
   gameList.value = gameList.value.filter(g => g.uid !== game.uid);
   if (selectedGame.value?.uid === game.uid) { selectedGameId.value = null; forceKey.value++; }
 }
-function selectGame(game: Game) { selectedGameId.value = game.uid; searchOpen.value = false; }
 
-// ── Game actions (browser stubs) ─────────────────────────
+function selectGame(game: Game) {
+  selectedGameId.value = game.uid;
+  searchOpen.value     = false;
+}
+
+// ── Load pending games from QuestsView (sessionStorage) ────────────────
+onMounted(() => {
+  try {
+    const raw = sessionStorage.getItem('pendingGames');
+    if (raw) {
+      const pending: Game[] = JSON.parse(raw);
+      for (const g of pending) {
+        if (!gameList.value.some(x => x.id === g.id)) {
+          gameList.value.push({ ...g, uid: g.uid || randomString(), is_installed: false, is_running: false });
+        }
+      }
+      if (pending.length) {
+        addLog('info', `📥 Loaded ${pending.length} game(s) from Quests tab`);
+        sessionStorage.removeItem('pendingGames');
+      }
+    }
+  } catch { /* ignore */ }
+});
+
+// ── Game actions ─────────────────────────────────────────
 async function createDummy(game: Game, exe: GameExecutable): Promise<boolean> {
   const g = gameList.value.find(x => x.uid === game.uid);
   const e = g?.executables.find(x => x.name === exe.name);
-  if (g && e) { g.is_installed = true; e.is_installed = true; addLog('info', `✓ Marked as installed: ${g.name}`); return true; }
+  if (g && e) {
+    g.is_installed = true;
+    e.is_installed = true;
+    addLog('info', `✓ Ready: ${g.name}`);
+    return true;
+  }
   return false;
 }
+
 async function playGame({ game, executable }: { game: Game; executable: GameExecutable }) {
   const g = gameList.value.find(x => x.uid === game.uid);
   const e = g?.executables.find(x => x.name === executable.name);
-  if (g && e) {
-    g.is_running   = true;
-    e.is_running   = true;
-    currentlyPlaying.value = g.id;
-    addLog('info', `▶ Now playing: ${g.name} (${executable.name})`);
+  if (!g || !e) return;
+
+  // Stop any currently running game first
+  if (currentlyPlayingUid.value && currentlyPlayingUid.value !== game.uid) {
+    const old = gameList.value.find(x => x.uid === currentlyPlayingUid.value);
+    if (old) {
+      old.is_running = false;
+      old.executables.forEach(ex => { ex.is_running = false; });
+    }
+  }
+
+  g.is_running = true;
+  e.is_running = true;
+  currentlyPlayingUid.value = g.uid!;
+
+  const ok = gateway.startPlaying({
+    name:           g.name,
+    application_id: g.id,
+    type:           0,
+  });
+
+  if (ok) {
+    addLog('info', `▶ Now playing: ${g.name} — Discord presence active`);
+  } else {
+    addLog('warning', `▶ Playing ${g.name} locally — connect Discord token to show status`);
   }
 }
+
 async function stopPlaying({ game, executable }: { game: Game; executable: GameExecutable }) {
   const g = gameList.value.find(x => x.uid === game.uid);
   const e = g?.executables.find(x => x.name === executable.name);
-  if (g && e) { g.is_running = false; e.is_running = false; }
-  if (currentlyPlaying.value === game.id) currentlyPlaying.value = null;
+  if (g) {
+    g.is_running = false;
+    g.executables.forEach(ex => { ex.is_running = false; });
+  }
+  if (currentlyPlayingUid.value === game.uid) {
+    currentlyPlayingUid.value = null;
+    gateway.stopPlaying();
+  }
   addLog('info', `■ Stopped: ${game.name}`);
 }
+
 async function installAndPlay({ game, executable }: { game: Game; executable: GameExecutable }) {
   await createDummy(game, executable);
   await playGame({ game, executable });
@@ -107,13 +173,51 @@ async function installAndPlay({ game, executable }: { game: Game; executable: Ga
 
 // ── Providers ────────────────────────────────────────────
 provide<GameActionsProvider>(GameActionsKey, {
-  canPlayGame: (g) => (g?.is_installed && !g?.is_running) ?? false,
-  isGameInstalled: (g) => g?.is_installed ?? false,
-  isExecutableRunning: (e) => e?.is_running ?? false,
-  isGameExecutableInstalled: (e) => e?.is_installed ?? false,
+  canPlayGame:              (g) => (g?.is_installed && !g?.is_running) ?? false,
+  isGameInstalled:          (g) => g?.is_installed ?? false,
+  isExecutableRunning:      (e) => e?.is_running ?? false,
+  isGameExecutableInstalled:(e) => e?.is_installed ?? false,
 });
 
-const playingGame = computed(() => gameList.value.find(g => g.id === currentlyPlaying.value));
+// ── Token / connection panel ──────────────────────────────
+const showTokenPanel = ref(false);
+const tokenInput     = ref(gateway.token.value);
+const showTokenText  = ref(false);
+
+watch(gateway.token, (v) => { tokenInput.value = v; });
+
+function connectDiscord() {
+  if (!tokenInput.value.trim()) {
+    addLog('error', 'Please enter your Discord token first.');
+    return;
+  }
+  gateway.connect(tokenInput.value.trim());
+}
+
+function disconnectDiscord() {
+  gateway.disconnect();
+}
+
+function saveTokenOnly() {
+  gateway.saveToken(tokenInput.value);
+  addLog('info', 'Token saved.');
+}
+
+const statusColor = computed(() => ({
+  connected:    'text-emerald-400',
+  connecting:   'text-amber-400',
+  identifying:  'text-amber-400',
+  disconnected: 'text-slate-500',
+  error:        'text-red-400',
+}[gateway.status.value] ?? 'text-slate-500'));
+
+const statusLabel = computed(() => ({
+  connected:    `✅ متصل كـ ${gateway.username.value ?? ''}`,
+  connecting:   '⏳ جاري الاتصال…',
+  identifying:  '🔑 جاري التحقق…',
+  disconnected: '⚫ غير متصل',
+  error:        `❌ خطأ: ${gateway.errorMsg.value ?? 'فشل الاتصال'}`,
+}[gateway.status.value] ?? '⚫ غير متصل'));
 </script>
 
 <template>
@@ -129,7 +233,137 @@ const playingGame = computed(() => gameList.value.find(g => g.id === currentlyPl
       </div>
     </Transition>
 
-    <div class="container mx-auto px-4 py-6 max-w-6xl space-y-6">
+    <div class="container mx-auto px-4 py-6 max-w-6xl space-y-4">
+
+      <!-- ── Discord Connection Panel ─────────────────── -->
+      <div class="card-glass rounded-xl border"
+        :class="gateway.status.value === 'connected'
+          ? 'border-emerald-500/20'
+          : gateway.status.value === 'error'
+          ? 'border-red-500/20'
+          : 'border-slate-700/40'">
+
+        <!-- Header row -->
+        <button class="w-full flex items-center justify-between px-4 py-3 text-left"
+          @click="showTokenPanel = !showTokenPanel">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-base shrink-0"
+              :class="gateway.status.value === 'connected' ? 'bg-emerald-500/15' : 'bg-slate-800'">
+              🔌
+            </div>
+            <div>
+              <div class="text-xs font-semibold text-slate-300">اتصال Discord</div>
+              <div class="text-xs mt-0.5" :class="statusColor">{{ statusLabel }}</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <div v-if="gateway.status.value === 'connected'"
+              class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+            <span class="text-slate-500 text-xs">{{ showTokenPanel ? '▲' : '▼' }}</span>
+          </div>
+        </button>
+
+        <!-- Expandable token form -->
+        <Transition enter-from-class="opacity-0 -translate-y-1" enter-active-class="transition-all duration-200"
+                    leave-to-class="opacity-0 -translate-y-1" leave-active-class="transition-all duration-150">
+          <div v-if="showTokenPanel" class="px-4 pb-4 space-y-3 border-t border-slate-800/50 pt-3">
+
+            <!-- Warning -->
+            <div class="flex items-start gap-2 px-3 py-2 bg-amber-500/8 border border-amber-500/15 rounded-lg">
+              <span class="text-sm shrink-0">⚠️</span>
+              <p class="text-xs text-amber-400/80 leading-relaxed">
+                <strong class="text-amber-400">تحذير أمني:</strong>
+                لا تشارك توكنك مع أي أحد. احصل عليه من DevTools في Discord Web (Network → /api requests → Authorization header).
+              </p>
+            </div>
+
+            <!-- Token input -->
+            <div class="flex gap-2">
+              <div class="relative flex-1">
+                <input
+                  v-model="tokenInput"
+                  :type="showTokenText ? 'text' : 'password'"
+                  placeholder="أدخل توكن Discord هنا…"
+                  class="w-full px-3 py-2 bg-slate-900 border border-slate-700/60 rounded-lg text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500/70 focus:ring-1 focus:ring-violet-500/20 transition-all pr-10 font-mono"
+                  @keydown.enter="connectDiscord"
+                />
+                <button @click="showTokenText = !showTokenText"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors text-xs">
+                  {{ showTokenText ? '🙈' : '👁️' }}
+                </button>
+              </div>
+              <button
+                v-if="gateway.status.value === 'disconnected' || gateway.status.value === 'error'"
+                @click="connectDiscord"
+                :disabled="!tokenInput.trim()"
+                class="px-4 py-2 bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/30 rounded-lg text-xs font-medium text-violet-300 transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed shrink-0">
+                اتصال
+              </button>
+              <button
+                v-else-if="gateway.status.value === 'connected'"
+                @click="disconnectDiscord"
+                class="px-4 py-2 bg-red-500/15 hover:bg-red-500/25 border border-red-500/25 rounded-lg text-xs font-medium text-red-400 transition-all duration-150 shrink-0">
+                قطع
+              </button>
+              <button
+                v-else
+                disabled
+                class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs font-medium text-slate-500 shrink-0 cursor-not-allowed">
+                <span class="inline-block spin-slow">⏳</span>
+              </button>
+            </div>
+
+            <p class="text-xs text-slate-600 text-center">
+              الاتصال يتيح ظهور "Playing …" على ملفك الشخصي في Discord في الوقت الفعلي
+            </p>
+          </div>
+        </Transition>
+      </div>
+
+      <!-- ── Quest timer (active) ────────────────────── -->
+      <Transition enter-from-class="opacity-0 scale-95" enter-active-class="transition-all duration-300"
+                  leave-to-class="opacity-0 scale-95" leave-active-class="transition-all duration-200">
+        <div v-if="gateway.questGameName.value"
+          class="card-glass rounded-xl p-4 border"
+          :class="gateway.questCompleted.value ? 'border-emerald-400/40 quest-complete-glow' : 'border-violet-500/20 quest-active-glow'">
+
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="text-lg">{{ gateway.questCompleted.value ? '🎉' : '⏱️' }}</span>
+              <div>
+                <div class="text-xs font-bold" :class="gateway.questCompleted.value ? 'text-emerald-400' : 'text-violet-300'">
+                  {{ gateway.questCompleted.value ? 'الكويست مكتمل! 🎁 احصل على مكافأتك' : 'تقدم الكويست' }}
+                </div>
+                <div class="text-xs text-slate-400 truncate max-w-[200px]">{{ gateway.questGameName.value }}</div>
+              </div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="text-sm font-bold font-mono"
+                :class="gateway.questCompleted.value ? 'text-emerald-400' : 'text-violet-300'">
+                {{ gateway.questTimeElapsed.value }}
+                <span class="text-slate-500 font-normal text-xs"> / 15:00</span>
+              </div>
+              <div v-if="!gateway.questCompleted.value" class="text-xs text-slate-500">
+                {{ gateway.questTimeLeft.value }} متبقي
+              </div>
+            </div>
+          </div>
+
+          <!-- Progress bar -->
+          <div class="h-2 bg-slate-800 rounded-full overflow-hidden">
+            <div
+              class="h-full rounded-full transition-all duration-1000"
+              :class="gateway.questCompleted.value ? 'bg-emerald-400' : 'bg-violet-500'"
+              :style="{ width: gateway.questProgress.value + '%' }"
+            ></div>
+          </div>
+          <div class="flex justify-between text-xs text-slate-600 mt-1">
+            <span>0:00</span>
+            <span>{{ Math.round(gateway.questProgress.value) }}%</span>
+            <span>15:00</span>
+          </div>
+        </div>
+      </Transition>
 
       <!-- ── Hero search ──────────────────────────────── -->
       <div class="relative" ref="searchRef">
@@ -250,6 +484,12 @@ const playingGame = computed(() => gameList.value.find(g => g.id === currentlyPl
                 <div class="flex-1 min-w-0">
                   <div class="text-xs text-emerald-400 font-medium mb-0.5">يعمل الآن</div>
                   <div class="font-semibold text-white truncate">{{ playingGame.name }}</div>
+                  <div class="text-xs mt-0.5"
+                    :class="gateway.status.value === 'connected' ? 'text-emerald-400' : 'text-amber-400'">
+                    {{ gateway.status.value === 'connected'
+                      ? '✅ ظاهر في Discord كـ Playing'
+                      : '⚠️ محلي فقط — أدخل التوكن لإظهاره في Discord' }}
+                  </div>
                 </div>
                 <div class="flex items-center gap-1.5 text-xs text-emerald-400">
                   <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
@@ -310,11 +550,12 @@ const playingGame = computed(() => gameList.value.find(g => g.id === currentlyPl
               />
             </div>
 
-            <!-- Info note -->
-            <div class="flex items-start gap-2.5 px-3 py-2.5 bg-amber-500/8 border border-amber-500/15 rounded-lg">
-              <span class="text-base shrink-0 mt-0.5">⚠️</span>
-              <p class="text-xs text-amber-400/80 leading-relaxed">
-                ربط Discord RPC يتطلب تشغيل التطبيق على Windows. في المتصفح تظهر حالة التشغيل داخل الواجهة فقط.
+            <!-- Gateway status hint -->
+            <div v-if="gateway.status.value !== 'connected'"
+              class="flex items-start gap-2.5 px-3 py-2.5 bg-violet-500/8 border border-violet-500/15 rounded-lg">
+              <span class="text-base shrink-0 mt-0.5">💡</span>
+              <p class="text-xs text-violet-400/80 leading-relaxed">
+                لإظهار حالة "Playing" في Discord، افتح لوحة الاتصال أعلاه وأدخل توكنك.
               </p>
             </div>
           </div>
@@ -335,8 +576,8 @@ const playingGame = computed(() => gameList.value.find(g => g.id === currentlyPl
                 <div class="text-xs text-slate-500 mt-0.5">مضافة</div>
               </div>
               <div class="bg-slate-800/50 rounded-lg p-3 text-center">
-                <div class="text-xl font-bold" :class="currentlyPlaying ? 'text-emerald-400' : 'text-slate-600'">
-                  {{ currentlyPlaying ? '1' : '0' }}
+                <div class="text-xl font-bold" :class="currentlyPlayingUid ? 'text-emerald-400' : 'text-slate-600'">
+                  {{ currentlyPlayingUid ? '1' : '0' }}
                 </div>
                 <div class="text-xs text-slate-500 mt-0.5">يعمل الآن</div>
               </div>
@@ -355,4 +596,11 @@ const playingGame = computed(() => gameList.value.find(g => g.id === currentlyPl
 .game-list-enter-active { animation: fadeSlideIn 0.25s ease both; }
 .game-list-leave-active { transition: all 0.2s ease; }
 .game-list-leave-to     { opacity: 0; transform: translateX(-10px); }
+
+.quest-active-glow {
+  box-shadow: 0 0 20px 0 rgb(139 92 246 / 0.12);
+}
+.quest-complete-glow {
+  box-shadow: 0 0 24px 0 rgb(52 211 153 / 0.18);
+}
 </style>
