@@ -21,6 +21,7 @@ export default defineConfig({
     allowedHosts: true,
     hmr: {
       clientPort: 443,
+      host: process.env.REPLIT_DEV_DOMAIN ?? 'localhost',
     },
     watch: {
       ignored: ["**/src-tauri/**"],

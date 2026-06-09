@@ -1,67 +1,508 @@
 [
   {
-    "id": "1",
-    "name": "Minecraft",
-    "aliases": ["minecraft"],
-    "executables": [
-      {
-        "is_launcher": false,
-        "name": "Minecraft",
-        "os": "win32",
-        "filename": "Minecraft.exe"
-      }
-    ]
-  },
-  {
-    "id": "2",
+    "id": "432980957394370572",
     "name": "Fortnite",
-    "aliases": ["fortnite"],
+    "aliases": ["fortnite", "fn", "battle royale"],
     "executables": [
-      {
-        "is_launcher": false,
-        "name": "Fortnite",
-        "os": "win32",
-        "filename": "FortniteClient-Win64-Shipping.exe"
-      }
+      { "is_launcher": false, "name": "FortniteClient-Win64-Shipping.exe", "os": "win32" },
+      { "is_launcher": true,  "name": "EpicGamesLauncher.exe", "os": "win32" }
     ]
   },
   {
-    "id": "3",
+    "id": "700136079562375199",
+    "name": "VALORANT",
+    "aliases": ["valorant", "valo", "val"],
+    "executables": [
+      { "is_launcher": false, "name": "VALORANT-Win64-Shipping.exe", "os": "win32" },
+      { "is_launcher": true,  "name": "RiotClientServices.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "432980957394370561",
+    "name": "Apex Legends",
+    "aliases": ["apex", "apex legends", "al"],
+    "executables": [
+      { "is_launcher": false, "name": "r5apex.exe", "os": "win32" },
+      { "is_launcher": true,  "name": "EADesktop.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "401518684763586560",
     "name": "League of Legends",
-    "aliases": ["lol", "league"],
+    "aliases": ["lol", "league", "league of legends"],
     "executables": [
-      {
-        "is_launcher": false,
-        "name": "League of Legends",
-        "os": "win32",
-        "filename": "League of Legends.exe"
-      }
+      { "is_launcher": false, "name": "League of Legends.exe", "os": "win32" },
+      { "is_launcher": true,  "name": "LeagueClient.exe", "os": "win32" }
     ]
   },
   {
-    "id": "4",
-    "name": "Valorant",
-    "aliases": ["valorant"],
+    "id": "356869127241072640",
+    "name": "Overwatch 2",
+    "aliases": ["overwatch", "ow", "ow2"],
     "executables": [
-      {
-        "is_launcher": false,
-        "name": "Valorant",
-        "os": "win32",
-        "filename": "VALORANT-Win64-Shipping.exe"
-      }
+      { "is_launcher": false, "name": "Overwatch.exe", "os": "win32" },
+      { "is_launcher": true,  "name": "Battle.net.exe", "os": "win32" }
     ]
   },
   {
-    "id": "5",
+    "id": "363416890968064000",
+    "name": "Minecraft",
+    "aliases": ["minecraft", "mc"],
+    "executables": [
+      { "is_launcher": false, "name": "Minecraft.Windows.exe", "os": "win32" },
+      { "is_launcher": false, "name": "javaw.exe", "os": "win32" },
+      { "is_launcher": true,  "name": "MinecraftLauncher.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "1046936192117370920",
     "name": "Counter-Strike 2",
-    "aliases": ["cs2", "csgo"],
+    "aliases": ["cs2", "csgo", "counter strike", "cs"],
     "executables": [
-      {
-        "is_launcher": false,
-        "name": "Counter-Strike 2",
-        "os": "win32",
-        "filename": "cs2.exe"
-      }
+      { "is_launcher": false, "name": "cs2.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267776",
+    "name": "Grand Theft Auto V",
+    "aliases": ["gta", "gta5", "gtav", "grand theft auto"],
+    "executables": [
+      { "is_launcher": false, "name": "GTA5.exe", "os": "win32" },
+      { "is_launcher": true,  "name": "GTAVLauncher.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356877880286265344",
+    "name": "Dota 2",
+    "aliases": ["dota", "dota2"],
+    "executables": [
+      { "is_launcher": false, "name": "dota2.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356877880286265350",
+    "name": "Rocket League",
+    "aliases": ["rocket league", "rl"],
+    "executables": [
+      { "is_launcher": false, "name": "RocketLeague.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267780",
+    "name": "Destiny 2",
+    "aliases": ["destiny", "d2"],
+    "executables": [
+      { "is_launcher": false, "name": "destiny2.exe", "os": "win32" },
+      { "is_launcher": true,  "name": "steam.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "359256791162937344",
+    "name": "Rainbow Six Siege",
+    "aliases": ["r6", "r6s", "siege", "rainbow six"],
+    "executables": [
+      { "is_launcher": false, "name": "RainbowSix.exe", "os": "win32" },
+      { "is_launcher": true,  "name": "UbisoftConnect.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "357859892735819776",
+    "name": "For Honor",
+    "aliases": ["for honor", "forhonor"],
+    "executables": [
+      { "is_launcher": false, "name": "ForHonor.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870227869237258",
+    "name": "Final Fantasy XIV",
+    "aliases": ["ffxiv", "ff14", "final fantasy"],
+    "executables": [
+      { "is_launcher": false, "name": "ffxiv_dx11.exe", "os": "win32" },
+      { "is_launcher": true,  "name": "ffxivlauncher.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "1044418777015136266",
+    "name": "Diablo IV",
+    "aliases": ["diablo", "d4", "diablo4"],
+    "executables": [
+      { "is_launcher": false, "name": "Diablo IV.exe", "os": "win32" },
+      { "is_launcher": true,  "name": "Battle.net.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "1013551960007016509",
+    "name": "Path of Exile 2",
+    "aliases": ["poe2", "path of exile", "poe"],
+    "executables": [
+      { "is_launcher": false, "name": "PathOfExile_x64.exe", "os": "win32" },
+      { "is_launcher": false, "name": "PathOfExile2.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "1014478020187086928",
+    "name": "Genshin Impact",
+    "aliases": ["genshin", "gi"],
+    "executables": [
+      { "is_launcher": false, "name": "GenshinImpact.exe", "os": "win32" },
+      { "is_launcher": true,  "name": "launcher.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "1046871654195261511",
+    "name": "Honkai: Star Rail",
+    "aliases": ["hsr", "honkai star rail", "star rail"],
+    "executables": [
+      { "is_launcher": false, "name": "StarRail.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "914049282699993128",
+    "name": "Lost Ark",
+    "aliases": ["lost ark", "lostark"],
+    "executables": [
+      { "is_launcher": false, "name": "LOSTARK.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "888287605234708490",
+    "name": "New World: Aeternum",
+    "aliases": ["new world", "nw", "aeternum"],
+    "executables": [
+      { "is_launcher": false, "name": "NewWorld.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "1163799784478646272",
+    "name": "Helldivers 2",
+    "aliases": ["helldivers", "hd2"],
+    "executables": [
+      { "is_launcher": false, "name": "helldivers2.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "1185878475467169925",
+    "name": "Palworld",
+    "aliases": ["palworld", "pal"],
+    "executables": [
+      { "is_launcher": false, "name": "Palworld.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "1255603975898087464",
+    "name": "Marvel Rivals",
+    "aliases": ["marvel rivals", "rivals"],
+    "executables": [
+      { "is_launcher": false, "name": "Marvel-Win64-Shipping.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "359270519757463552",
+    "name": "Sea of Thieves",
+    "aliases": ["sea of thieves", "sot"],
+    "executables": [
+      { "is_launcher": false, "name": "SoTGame.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356877880286265345",
+    "name": "Dead by Daylight",
+    "aliases": ["dbd", "dead by daylight"],
+    "executables": [
+      { "is_launcher": false, "name": "DeadByDaylight-Win64-Shipping.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "798822289909514250",
+    "name": "Fall Guys",
+    "aliases": ["fall guys", "fallguys"],
+    "executables": [
+      { "is_launcher": false, "name": "FallGuys_client.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "773336526917861400",
+    "name": "Among Us",
+    "aliases": ["among us", "amogus"],
+    "executables": [
+      { "is_launcher": false, "name": "Among Us.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356877880286265349",
+    "name": "Rust",
+    "aliases": ["rust"],
+    "executables": [
+      { "is_launcher": false, "name": "RustClient.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267770",
+    "name": "Call of Duty",
+    "aliases": ["cod", "call of duty", "warzone", "mw3"],
+    "executables": [
+      { "is_launcher": false, "name": "cod.exe", "os": "win32" },
+      { "is_launcher": false, "name": "ModernWarfare3.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356877355799265290",
+    "name": "World of Warcraft",
+    "aliases": ["wow", "world of warcraft"],
+    "executables": [
+      { "is_launcher": false, "name": "Wow.exe", "os": "win32" },
+      { "is_launcher": false, "name": "WowClassic.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "435928559662776320",
+    "name": "Monster Hunter: World",
+    "aliases": ["mhw", "monster hunter", "mh"],
+    "executables": [
+      { "is_launcher": false, "name": "MonsterHunterWorld.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "900883882226987089",
+    "name": "Halo Infinite",
+    "aliases": ["halo", "halo infinite"],
+    "executables": [
+      { "is_launcher": false, "name": "HaloInfinite.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "495040429398433792",
+    "name": "Deep Rock Galactic",
+    "aliases": ["drg", "deep rock"],
+    "executables": [
+      { "is_launcher": false, "name": "FSD-Win64-Shipping.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356869127241072641",
+    "name": "Warframe",
+    "aliases": ["warframe", "wf"],
+    "executables": [
+      { "is_launcher": false, "name": "Warframe.x64.exe", "os": "win32" },
+      { "is_launcher": true,  "name": "Launcher.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "1126861956643192882",
+    "name": "Wuthering Waves",
+    "aliases": ["wuthering waves", "wuwa"],
+    "executables": [
+      { "is_launcher": false, "name": "Wuthering Waves.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "1080058861076267059",
+    "name": "The First Descendant",
+    "aliases": ["first descendant", "tfd"],
+    "executables": [
+      { "is_launcher": false, "name": "M1-Win64-Shipping.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "1070561330822623352",
+    "name": "Naraka: Bladepoint",
+    "aliases": ["naraka", "bladepoint"],
+    "executables": [
+      { "is_launcher": false, "name": "NARAKA.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267771",
+    "name": "Escape from Tarkov",
+    "aliases": ["tarkov", "eft"],
+    "executables": [
+      { "is_launcher": false, "name": "EscapeFromTarkov.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267772",
+    "name": "Hunt: Showdown 1896",
+    "aliases": ["hunt showdown", "hunt"],
+    "executables": [
+      { "is_launcher": false, "name": "HuntGame.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267773",
+    "name": "Phasmophobia",
+    "aliases": ["phasmo", "phasmophobia"],
+    "executables": [
+      { "is_launcher": false, "name": "Phasmophobia.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267774",
+    "name": "Battlefield 2042",
+    "aliases": ["battlefield", "bf2042", "bf"],
+    "executables": [
+      { "is_launcher": false, "name": "BF2042.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267775",
+    "name": "Smite 2",
+    "aliases": ["smite", "smite 2"],
+    "executables": [
+      { "is_launcher": false, "name": "SmiteGame.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267777",
+    "name": "Team Fortress 2",
+    "aliases": ["tf2", "team fortress"],
+    "executables": [
+      { "is_launcher": false, "name": "hl2.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267778",
+    "name": "Elden Ring",
+    "aliases": ["elden ring", "er"],
+    "executables": [
+      { "is_launcher": false, "name": "eldenring.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267779",
+    "name": "Starfield",
+    "aliases": ["starfield"],
+    "executables": [
+      { "is_launcher": false, "name": "Starfield.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267781",
+    "name": "Cyberpunk 2077",
+    "aliases": ["cyberpunk", "cp2077"],
+    "executables": [
+      { "is_launcher": false, "name": "Cyberpunk2077.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267782",
+    "name": "The Elder Scrolls Online",
+    "aliases": ["eso", "elder scrolls online"],
+    "executables": [
+      { "is_launcher": false, "name": "eso64.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267783",
+    "name": "Guild Wars 2",
+    "aliases": ["gw2", "guild wars"],
+    "executables": [
+      { "is_launcher": false, "name": "Gw2-64.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267784",
+    "name": "RuneScape",
+    "aliases": ["runescape", "rs", "osrs"],
+    "executables": [
+      { "is_launcher": false, "name": "RuneScape.exe", "os": "win32" },
+      { "is_launcher": false, "name": "osclient.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267785",
+    "name": "XDefiant",
+    "aliases": ["xdefiant"],
+    "executables": [
+      { "is_launcher": false, "name": "XDefiant.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267786",
+    "name": "The Finals",
+    "aliases": ["the finals", "finals"],
+    "executables": [
+      { "is_launcher": false, "name": "Discovery.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267787",
+    "name": "Skull and Bones",
+    "aliases": ["skull and bones"],
+    "executables": [
+      { "is_launcher": false, "name": "SkullAndBones.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267788",
+    "name": "Albion Online",
+    "aliases": ["albion", "ao"],
+    "executables": [
+      { "is_launcher": false, "name": "Albion-Online.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267789",
+    "name": "Dark and Darker",
+    "aliases": ["dark and darker", "dad"],
+    "executables": [
+      { "is_launcher": false, "name": "DarkAndDarker-Win64-Shipping.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267790",
+    "name": "Dauntless",
+    "aliases": ["dauntless"],
+    "executables": [
+      { "is_launcher": false, "name": "Dauntless.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267791",
+    "name": "Black Desert Online",
+    "aliases": ["bdo", "black desert"],
+    "executables": [
+      { "is_launcher": false, "name": "BlackDesert64.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267792",
+    "name": "Once Human",
+    "aliases": ["once human"],
+    "executables": [
+      { "is_launcher": false, "name": "OnceHuman.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267793",
+    "name": "BattleBit Remastered",
+    "aliases": ["battlebit", "bbr"],
+    "executables": [
+      { "is_launcher": false, "name": "BattleBit.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267794",
+    "name": "Star Wars: The Old Republic",
+    "aliases": ["swtor", "star wars mmo"],
+    "executables": [
+      { "is_launcher": false, "name": "swtor.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267795",
+    "name": "Neverwinter",
+    "aliases": ["neverwinter", "nw"],
+    "executables": [
+      { "is_launcher": false, "name": "Neverwinter.exe", "os": "win32" }
+    ]
+  },
+  {
+    "id": "356870650088267796",
+    "name": "Delta Force",
+    "aliases": ["delta force"],
+    "executables": [
+      { "is_launcher": false, "name": "DeltaForce.exe", "os": "win32" }
     ]
   }
 ]
