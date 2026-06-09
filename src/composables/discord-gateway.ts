@@ -39,10 +39,16 @@ export function useDiscordGateway() {
   const errorMsg  = ref<string | null>(null);
   const ws        = shallowRef<WebSocket | null>(null);
 
-  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  let sequence:       number | null = null;
-  let token:          string | null = null;
-  let currentActivity: PresenceActivity | null = null;
+  let heartbeatTimer:     ReturnType<typeof setInterval> | null = null;
+  let reconnectTimer:     ReturnType<typeof setTimeout>  | null = null;
+  let sequence:           number | null = null;
+  let token:              string | null = null;
+  let currentActivity:    PresenceActivity | null = null;
+  let intentionalClose =  false; // prevents auto-reconnect on manual disconnect or bad token
+
+  function _clearReconnectTimer() {
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  }
 
   function send(op: number, d: unknown) {
     if (ws.value?.readyState === WebSocket.OPEN) {
@@ -81,8 +87,11 @@ export function useDiscordGateway() {
   }
 
   function connect(userToken: string) {
+    if (!userToken?.trim()) return;
     if (ws.value) disconnect();
-    token  = userToken;
+    token = userToken;
+    intentionalClose = false;
+    _clearReconnectTimer();
     status.value   = 'connecting';
     errorMsg.value = null;
     addLog('info', 'Connecting to Discord Gateway…');
@@ -121,45 +130,59 @@ export function useDiscordGateway() {
           addLog('error', 'Invalid Session — check your token');
           status.value   = 'error';
           errorMsg.value = 'Invalid session — check your token.';
+          intentionalClose = true; // don't auto-reconnect on bad token
+          token = null;
           disconnect();
           break;
         }
         case OP_RECONNECT: {
           addLog('warning', 'Reconnect requested by Discord');
           const savedToken = token;
+          intentionalClose = false; // reconnect is expected
           disconnect();
-          if (savedToken) setTimeout(() => connect(savedToken), 2000);
+          if (savedToken) {
+            _clearReconnectTimer();
+            reconnectTimer = setTimeout(() => connect(savedToken), 2000);
+          }
           break;
         }
       }
     };
 
     socket.onerror = () => {
-      status.value   = 'error';
-      errorMsg.value = 'Connection error — check your network.';
-      addLog('error', 'WebSocket error');
+      // onerror is always followed by onclose — handle reconnect there
+      if (status.value !== 'error') {
+        status.value   = 'error';
+        errorMsg.value = 'Connection error — check your network.';
+        addLog('error', 'WebSocket connection error');
+      }
     };
 
     socket.onclose = (e) => {
       stopHeartbeat();
       if (status.value !== 'error') status.value = 'disconnected';
-      // Auto-reconnect on unexpected close
-      if (!e.wasClean && token && status.value !== 'error') {
+
+      // Auto-reconnect only on unexpected drops — not on intentional close or bad token
+      if (!e.wasClean && token && !intentionalClose) {
         addLog('warning', `Connection lost (${e.code}), reconnecting in 5s…`);
-        setTimeout(() => { if (token) connect(token); }, 5000);
+        _clearReconnectTimer();
+        reconnectTimer = setTimeout(() => {
+          if (token && !intentionalClose) connect(token);
+        }, 5000);
       }
     };
   }
 
   function disconnect() {
     stopHeartbeat();
-    const savedToken = token;
-    token = null; // clear token before close so auto-reconnect won't fire
+    _clearReconnectTimer();
+    intentionalClose = true;
+    token = null;
     ws.value?.close(1000, 'User disconnected');
-    ws.value       = null;
-    status.value   = 'disconnected';
-    username.value = null;
-    userId.value   = null;
+    ws.value        = null;
+    status.value    = 'disconnected';
+    username.value  = null;
+    userId.value    = null;
     avatarUrl.value = null;
     addLog('info', 'Disconnected from Discord Gateway');
   }

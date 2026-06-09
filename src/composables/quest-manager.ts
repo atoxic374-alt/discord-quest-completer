@@ -21,7 +21,6 @@ function discordHeaders(token: string) {
     'Content-Type':     'application/json',
     'X-Discord-Locale': 'en-US',
     'Accept':           'application/json',
-    // Minimal super-properties (Windows client identity)
     'X-Super-Properties': btoa(JSON.stringify({
       os: 'Windows', browser: 'Discord Client', release_channel: 'stable',
       client_version: '1.0.9194', platform: 'win32', os_version: '10.0.19045',
@@ -40,7 +39,7 @@ export interface QuestReward {
 
 export interface QuestTaskMetadata {
   quest_id?:                   string;
-  task_duration?:              number; // seconds
+  task_duration?:              number;
   stream_duration_requirement?: number;
 }
 
@@ -128,17 +127,15 @@ export async function claimQuestReward(questId: string, token: string): Promise<
 }
 
 // ── Global Quest Manager ──────────────────────────────────────────────────
-const HEARTBEAT_INTERVAL = 60_000; // 1 minute (Discord expects ~1 min intervals)
+const HEARTBEAT_INTERVAL = 60_000;
 
 export const useQuestManager = createGlobalState(() => {
   const { addLog } = useGlobalState();
 
-  // Quests fetched via API (with token) — merged across all accounts
   const liveQuests     = ref<DiscordQuest[]>([]);
   const fetchStatus    = ref<'idle' | 'loading' | 'loaded' | 'auth_required' | 'error'>('idle');
   const lastFetched    = ref<Date | null>(null);
 
-  // Active heartbeats: questId → { timer, token, count }
   const heartbeatTimers = new Map<string, ReturnType<typeof setInterval>>();
   const heartbeatCounts = ref<Record<string, number>>({});
 
@@ -151,7 +148,6 @@ export const useQuestManager = createGlobalState(() => {
     }
     fetchStatus.value = 'loading';
     try {
-      // Try the first connected token — quests are per-user but we pick the first
       const quests = await fetchQuestsWithToken(connectedTokens[0]);
       liveQuests.value  = quests;
       fetchStatus.value = 'loaded';
@@ -170,6 +166,10 @@ export const useQuestManager = createGlobalState(() => {
 
   // ── Auto-enroll in a quest ──────────────────────────────────────────────
   async function autoEnroll(questId: string, tokens: string[]) {
+    if (!tokens.length) {
+      addLog('warning', 'No tokens available for enrollment');
+      return false;
+    }
     let enrolled = false;
     for (const t of tokens) {
       const ok = await enrollQuest(questId, t);
@@ -183,12 +183,28 @@ export const useQuestManager = createGlobalState(() => {
 
   // ── Start heartbeat for a quest ─────────────────────────────────────────
   function startHeartbeat(questId: string, tokens: string[]) {
+    // Guards: no tokens, already running, or quest already completed/claimed
+    if (!tokens.length) {
+      addLog('warning', `Cannot start heartbeat for quest ${questId} — no tokens`);
+      return;
+    }
+    const quest = liveQuests.value.find(q => q.id === questId);
+    if (quest && isCompleted(quest)) {
+      addLog('info', `Quest ${questId} already completed — heartbeat not needed`);
+      return;
+    }
     if (heartbeatTimers.has(questId)) return; // already running
 
-    // Send first heartbeat immediately
     _sendHeartbeatAll(questId, tokens);
 
     const timer = setInterval(() => {
+      // Stop automatically if quest is now completed
+      const q = liveQuests.value.find(x => x.id === questId);
+      if (q && isCompleted(q)) {
+        stopHeartbeat(questId);
+        addLog('info', `Heartbeat auto-stopped — quest ${questId} completed`);
+        return;
+      }
       _sendHeartbeatAll(questId, tokens);
     }, HEARTBEAT_INTERVAL);
 
@@ -216,15 +232,17 @@ export const useQuestManager = createGlobalState(() => {
   }
 
   function stopAllHeartbeats() {
-    for (const [id, timer] of heartbeatTimers) {
-      clearInterval(timer);
-    }
+    for (const [, timer] of heartbeatTimers) clearInterval(timer);
     heartbeatTimers.clear();
     heartbeatCounts.value = {};
   }
 
   // ── Claim reward ────────────────────────────────────────────────────────
   async function claimReward(questId: string, tokens: string[]) {
+    if (!tokens.length) {
+      addLog('error', 'No tokens available to claim reward');
+      return false;
+    }
     for (const t of tokens) {
       const ok = await claimQuestReward(questId, t);
       if (ok) {
@@ -247,7 +265,7 @@ export const useQuestManager = createGlobalState(() => {
   }
 
   function getQuestDuration(q: DiscordQuest): number {
-    return q.config?.task_metadata?.task_duration ?? 900; // default 15 min
+    return q.config?.task_metadata?.task_duration ?? 900;
   }
 
   function isEnrolled(q: DiscordQuest): boolean {
@@ -256,6 +274,10 @@ export const useQuestManager = createGlobalState(() => {
 
   function isCompleted(q: DiscordQuest): boolean {
     return !!q.user_status?.completed_at;
+  }
+
+  function isClaimed(q: DiscordQuest): boolean {
+    return !!q.user_status?.claimed_at;
   }
 
   function getProgressSeconds(q: DiscordQuest): number {
@@ -283,6 +305,7 @@ export const useQuestManager = createGlobalState(() => {
     getQuestDuration,
     isEnrolled,
     isCompleted,
+    isClaimed,
     getProgressSeconds,
   };
 });

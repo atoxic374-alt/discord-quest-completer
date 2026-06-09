@@ -3,8 +3,7 @@ import { ref, computed, shallowRef } from 'vue';
 import { useDiscordGateway, type PresenceActivity } from './discord-gateway';
 import { useGlobalState } from './app-state';
 
-const TOKENS_KEY      = 'ens_tokens';
-const QUEST_DURATION  = 15 * 60;
+const TOKENS_KEY = 'ens_tokens';
 
 export interface TokenEntry {
   id:     string;
@@ -27,7 +26,7 @@ function loadTokenEntries(): TokenEntry[] {
 }
 
 function saveTokenEntries(entries: TokenEntry[]) {
-  try { localStorage.setItem(TOKENS_KEY, JSON.stringify(entries)); } catch { /* ignore */ }
+  try { localStorage.setItem(TOKENS_KEY, JSON.stringify(entries)); } catch { }
 }
 
 function randomId() {
@@ -37,7 +36,6 @@ function randomId() {
 export const useGatewayManager = createGlobalState(() => {
   const { addLog } = useGlobalState();
 
-  // ── Accounts ─────────────────────────────────────────────────────────
   const accounts = shallowRef<TokenAccount[]>([]);
 
   function _syncAccounts(next: TokenAccount[]) {
@@ -51,18 +49,16 @@ export const useGatewayManager = createGlobalState(() => {
       return { id: e.id, token: e.token, label: e.label, gateway: gw };
     });
     _syncAccounts(accts);
-    // Connect each
-    for (const a of accts) {
-      a.gateway.connect(a.token);
-    }
+    for (const a of accts) a.gateway.connect(a.token);
   }
 
   function addToken(token: string, label?: string) {
     const trimmed = token.trim();
     if (!trimmed) { addLog('error', 'Please enter a valid token.'); return; }
-    // Check duplicate
-    const existing = accounts.value.find(a => a.token === trimmed);
-    if (existing) { addLog('warning', 'This token is already added.'); return; }
+    if (accounts.value.find(a => a.token === trimmed)) {
+      addLog('warning', 'This token is already added.');
+      return;
+    }
 
     const id  = randomId();
     const gw  = useDiscordGateway();
@@ -70,12 +66,9 @@ export const useGatewayManager = createGlobalState(() => {
 
     const next = [...accounts.value, acct];
     _syncAccounts(next);
-
-    const entries: TokenEntry[] = next.map(a => ({ id: a.id, token: a.token, label: a.label }));
-    saveTokenEntries(entries);
-
+    saveTokenEntries(next.map(a => ({ id: a.id, token: a.token, label: a.label })));
     gw.connect(trimmed);
-    addLog('info', `Token added — connecting…`);
+    addLog('info', 'Token added — connecting…');
   }
 
   function removeToken(id: string) {
@@ -109,25 +102,27 @@ export const useGatewayManager = createGlobalState(() => {
   const username = computed(() => primaryAccount.value?.gateway.username.value ?? null);
   const errorMsg = computed(() => primaryAccount.value?.gateway.errorMsg.value ?? null);
 
-  // ── Quest timer ───────────────────────────────────────────────────────
+  // ── Quest timer — uses real quest duration if provided ────────────────
   const questStartTime  = ref<number | null>(null);
   const questGameName   = ref<string | null>(null);
   const questGameId     = ref<string | null>(null);
   const questElapsed    = ref(0);
   const questCompleted  = ref(false);
+  const questDuration   = ref(15 * 60); // default 15 min, overridden per quest
   let   questTimerHandle: ReturnType<typeof setInterval> | null = null;
 
-  function startQuestTimer(gameName: string, gameId: string) {
+  function startQuestTimer(gameName: string, gameId: string, durationSecs = 15 * 60) {
     stopQuestTimer();
     questStartTime.value = Date.now();
     questGameName.value  = gameName;
     questGameId.value    = gameId;
     questElapsed.value   = 0;
     questCompleted.value = false;
+    questDuration.value  = durationSecs;
     questTimerHandle = setInterval(() => {
       const elapsed = Math.floor((Date.now() - questStartTime.value!) / 1000);
       questElapsed.value = elapsed;
-      if (!questCompleted.value && elapsed >= QUEST_DURATION) {
+      if (!questCompleted.value && elapsed >= questDuration.value) {
         questCompleted.value = true;
         addLog('info', `Quest completed for "${gameName}"! Claim your reward.`);
       }
@@ -141,13 +136,14 @@ export const useGatewayManager = createGlobalState(() => {
     questGameId.value    = null;
     questElapsed.value   = 0;
     questCompleted.value = false;
+    questDuration.value  = 15 * 60;
   }
 
   const questProgress = computed(() =>
-    Math.min(100, (questElapsed.value / QUEST_DURATION) * 100)
+    Math.min(100, (questElapsed.value / questDuration.value) * 100)
   );
   const questTimeLeft = computed(() => {
-    const r = Math.max(0, QUEST_DURATION - questElapsed.value);
+    const r = Math.max(0, questDuration.value - questElapsed.value);
     return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, '0')}`;
   });
   const questTimeElapsed = computed(() => {
@@ -155,16 +151,21 @@ export const useGatewayManager = createGlobalState(() => {
     const s = questElapsed.value % 60;
     return `${m}:${String(s).padStart(2, '0')}`;
   });
+  const questDurationLabel = computed(() => {
+    const m = Math.floor(questDuration.value / 60);
+    const s = questDuration.value % 60;
+    return s > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${m}:00`;
+  });
 
   // ── Presence helpers ──────────────────────────────────────────────────
-  function startPlaying(activity: PresenceActivity) {
+  function startPlaying(activity: PresenceActivity, durationSecs?: number) {
     const connected = accounts.value.filter(a => a.gateway.status.value === 'connected');
     if (connected.length === 0) {
       addLog('warning', 'No connected accounts — add a Discord token first.');
       return false;
     }
     for (const a of connected) a.gateway.sendPresence(activity);
-    startQuestTimer(activity.name, activity.application_id);
+    startQuestTimer(activity.name, activity.application_id, durationSecs);
     return true;
   }
 
@@ -175,15 +176,12 @@ export const useGatewayManager = createGlobalState(() => {
     stopQuestTimer();
   }
 
-  // ── Legacy compat (single token) ─────────────────────────────────────
+  // ── Legacy compat ─────────────────────────────────────────────────────
   const token = computed(() => primaryAccount.value?.token ?? '');
   function saveToken(t: string) { addToken(t); }
   function connect(t: string)   { addToken(t); }
-  function disconnect()         {
-    for (const a of [...accounts.value]) removeToken(a.id);
-  }
+  function disconnect()         { for (const a of [...accounts.value]) removeToken(a.id); }
 
-  // Init
   loadAndConnect();
 
   return {
@@ -193,9 +191,8 @@ export const useGatewayManager = createGlobalState(() => {
     status, username, errorMsg,
     token, saveToken, connect, disconnect,
     startPlaying, stopPlaying,
-    questStartTime, questGameName, questGameId,
+    questStartTime, questGameName, questGameId, questDuration, questDurationLabel,
     questElapsed, questProgress, questCompleted,
     questTimeLeft, questTimeElapsed,
-    QUEST_DURATION,
   };
 });
