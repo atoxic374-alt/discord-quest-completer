@@ -1,13 +1,19 @@
 <template>
   <div class="space-y-2">
-    <div v-if="filteredExecutables.length === 0" class="text-xs text-slate-500 py-2 text-center">
-      لا توجد ملفات تنفيذية لنظام Windows
+    <div v-if="filteredExecutables.length === 0"
+      class="text-xs py-3 text-center rounded-lg"
+      style="color: var(--text-3); background: var(--bg-3); border: 1px dashed rgba(180,60,100,0.2);">
+      No Windows executables found
     </div>
     <div v-for="exe in filteredExecutables" :key="exe.name"
-      class="flex items-center gap-3 p-3 bg-slate-800/50 hover:bg-slate-800 rounded-lg border border-slate-700/30 transition-all duration-150">
+      class="flex items-center gap-3 p-3 rounded-xl transition-all duration-150"
+      style="background: var(--bg-3); border: 1px solid rgba(180,60,100,0.12);"
+      @mouseenter="($event.currentTarget as HTMLElement).style.borderColor='rgba(212,64,110,0.22)'"
+      @mouseleave="($event.currentTarget as HTMLElement).style.borderColor='rgba(180,60,100,0.12)'">
 
       <!-- OS badge -->
-      <div class="shrink-0 px-2 py-0.5 bg-slate-700/60 rounded text-xs text-slate-400 font-mono">
+      <div class="shrink-0 px-2 py-0.5 rounded-md text-xs font-mono"
+        style="background: var(--bg-4); color: var(--text-2); border: 1px solid rgba(180,60,100,0.15);">
         {{ exe.os }}
       </div>
 
@@ -15,8 +21,11 @@
       <div class="flex-1 min-w-0 overflow-hidden">
         <div class="flex flex-nowrap items-center gap-1 overflow-x-auto scrollbar-none fade-right">
           <template v-for="(seg, i) in splitName(exe)" :key="i">
-            <span v-if="i > 0" class="text-slate-600 shrink-0 text-xs">/</span>
-            <span class="shrink-0 px-1.5 py-0.5 bg-slate-900/60 rounded text-xs font-mono text-slate-300 whitespace-nowrap">{{ seg }}</span>
+            <span v-if="i > 0" class="shrink-0 text-xs" style="color: var(--text-3);">/</span>
+            <span class="shrink-0 px-1.5 py-0.5 rounded text-xs font-mono whitespace-nowrap"
+              style="background: rgba(124,29,74,0.15); color: var(--text-1);">
+              {{ seg }}
+            </span>
           </template>
         </div>
       </div>
@@ -24,14 +33,17 @@
       <!-- Action button -->
       <button
         class="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150"
-        :class="[
-          exe.is_running
-            ? 'bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400'
-            : 'bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/30 text-violet-300'
-        ]"
+        :style="exe.is_running
+          ? 'background: rgba(196,48,64,0.15); border: 1px solid rgba(196,48,64,0.3); color: #e05060;'
+          : 'background: rgba(124,29,74,0.25); border: 1px solid rgba(212,64,110,0.25); color: var(--accent-b);'"
         @click="handleLaunch(exe)">
-        <span>{{ exe.is_running ? '■' : '▶' }}</span>
-        {{ exe.is_running ? 'إيقاف' : 'تشغيل' }}
+        <svg v-if="exe.is_running" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="4" y="4" width="16" height="16" rx="2"/>
+        </svg>
+        <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5,3 19,12 5,21"/>
+        </svg>
+        {{ exe.is_running ? 'Stop' : 'Play' }}
       </button>
     </div>
   </div>
@@ -87,7 +99,7 @@ function handleLaunch(exe: GameExecutable) {
 </script>
 
 <style scoped>
-.fade-right { -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%); mask-image: linear-gradient(to right, black 85%, transparent 100%); }
+.fade-right  { -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%); mask-image: linear-gradient(to right, black 85%, transparent 100%); }
 .scrollbar-none { scrollbar-width: none; }
 .scrollbar-none::-webkit-scrollbar { display: none; }
 </style>
