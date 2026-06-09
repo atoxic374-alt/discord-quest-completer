@@ -1,0 +1,67 @@
+[
+  {
+    "id": "1",
+    "name": "Minecraft",
+    "aliases": ["minecraft"],
+    "executables": [
+      {
+        "is_launcher": false,
+        "name": "Minecraft",
+        "os": "win32",
+        "filename": "Minecraft.exe"
+      }
+    ]
+  },
+  {
+    "id": "2",
+    "name": "Fortnite",
+    "aliases": ["fortnite"],
+    "executables": [
+      {
+        "is_launcher": false,
+        "name": "Fortnite",
+        "os": "win32",
+        "filename": "FortniteClient-Win64-Shipping.exe"
+      }
+    ]
+  },
+  {
+    "id": "3",
+    "name": "League of Legends",
+    "aliases": ["lol", "league"],
+    "executables": [
+      {
+        "is_launcher": false,
+        "name": "League of Legends",
+        "os": "win32",
+        "filename": "League of Legends.exe"
+      }
+    ]
+  },
+  {
+    "id": "4",
+    "name": "Valorant",
+    "aliases": ["valorant"],
+    "executables": [
+      {
+        "is_launcher": false,
+        "name": "Valorant",
+        "os": "win32",
+        "filename": "VALORANT-Win64-Shipping.exe"
+      }
+    ]
+  },
+  {
+    "id": "5",
+    "name": "Counter-Strike 2",
+    "aliases": ["cs2", "csgo"],
+    "executables": [
+      {
+        "is_launcher": false,
+        "name": "Counter-Strike 2",
+        "os": "win32",
+        "filename": "cs2.exe"
+      }
+    ]
+  }
+]
