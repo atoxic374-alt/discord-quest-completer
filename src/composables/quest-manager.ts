@@ -12,7 +12,7 @@ import { ref, computed } from 'vue';
 import { createGlobalState } from '@vueuse/core';
 import { useGlobalState } from './app-state';
 
-const API_BASE = 'https://discord.com/api/v10';
+const API_BASE = '/discord-api/v10';
 
 // ── Discord headers that mimic the client ──────────────────────────────────
 function discordHeaders(token: string) {

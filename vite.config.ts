@@ -27,5 +27,13 @@ export default defineConfig({
     watch: {
       ignored: ["**/src-tauri/**"],
     },
+    proxy: {
+      '/discord-api': {
+        target: 'https://discord.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/discord-api/, '/api'),
+        secure: true,
+      },
+    },
   },
 });
