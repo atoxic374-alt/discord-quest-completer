@@ -129,7 +129,8 @@ export async function claimQuestReward(questId: string, token: string): Promise<
 }
 
 // ── Global Quest Manager ──────────────────────────────────────────────────
-const HEARTBEAT_INTERVAL = 60_000;
+const HEARTBEAT_INTERVAL     = 60_000;
+const HEARTBEAT_JITTER_MAX   = 15_000; // ±15s random variation — avoids bot-like perfect timing
 
 export const useQuestManager = createGlobalState(() => {
   const { addLog } = useGlobalState();
@@ -185,7 +186,6 @@ export const useQuestManager = createGlobalState(() => {
 
   // ── Start heartbeat for a quest ─────────────────────────────────────────
   function startHeartbeat(questId: string, tokens: string[]) {
-    // Guards: no tokens, already running, or quest already completed/claimed
     if (!tokens.length) {
       addLog('warning', `Cannot start heartbeat for quest ${questId} — no tokens`);
       return;
@@ -195,28 +195,44 @@ export const useQuestManager = createGlobalState(() => {
       addLog('info', `Quest ${questId} already completed — heartbeat not needed`);
       return;
     }
-    if (heartbeatTimers.has(questId)) return; // already running
+    if (heartbeatTimers.has(questId)) return;
 
-    _sendHeartbeatAll(questId, tokens);
-
-    const timer = setInterval(() => {
-      // Stop automatically if quest is now completed
-      const q = liveQuests.value.find(x => x.id === questId);
-      if (q && isCompleted(q)) {
-        stopHeartbeat(questId);
-        addLog('info', `Heartbeat auto-stopped — quest ${questId} completed`);
-        return;
-      }
+    // Random initial delay (0–15s) so multiple quests don't all fire at once
+    const initialDelay = Math.floor(Math.random() * HEARTBEAT_JITTER_MAX);
+    const initTimer = setTimeout(() => {
       _sendHeartbeatAll(questId, tokens);
-    }, HEARTBEAT_INTERVAL);
+      _scheduleNextHeartbeat(questId, tokens);
+    }, initialDelay);
 
-    heartbeatTimers.set(questId, timer);
-    addLog('info', `Heartbeat started for quest ${questId}`);
+    heartbeatTimers.set(questId, initTimer as unknown as ReturnType<typeof setInterval>);
+    addLog('info', `Heartbeat started for quest ${questId} (first in ${Math.round(initialDelay / 1000)}s)`);
+  }
+
+  function _scheduleNextHeartbeat(questId: string, tokens: string[]) {
+    const q = liveQuests.value.find(x => x.id === questId);
+    if (q && isCompleted(q)) {
+      stopHeartbeat(questId);
+      addLog('info', `Heartbeat auto-stopped — quest ${questId} completed`);
+      return;
+    }
+    // Jitter: 60s ± up to 7.5s — avoids perfectly timed bot-like requests
+    const jitter = Math.floor((Math.random() - 0.5) * HEARTBEAT_JITTER_MAX);
+    const delay  = HEARTBEAT_INTERVAL + jitter;
+    const timer  = setTimeout(() => {
+      _sendHeartbeatAll(questId, tokens);
+      _scheduleNextHeartbeat(questId, tokens);
+    }, delay);
+    heartbeatTimers.set(questId, timer as unknown as ReturnType<typeof setInterval>);
   }
 
   async function _sendHeartbeatAll(questId: string, tokens: string[]) {
+    let anyOk = false;
     for (const t of tokens) {
-      await sendQuestHeartbeat(questId, t);
+      const ok = await sendQuestHeartbeat(questId, t);
+      if (ok) anyOk = true;
+    }
+    if (!anyOk) {
+      addLog('warning', `Heartbeat failed for quest ${questId} — will retry next cycle`);
     }
     heartbeatCounts.value = {
       ...heartbeatCounts.value,
@@ -227,6 +243,7 @@ export const useQuestManager = createGlobalState(() => {
   function stopHeartbeat(questId: string) {
     const timer = heartbeatTimers.get(questId);
     if (timer) {
+      clearTimeout(timer as unknown as ReturnType<typeof setTimeout>);
       clearInterval(timer);
       heartbeatTimers.delete(questId);
       addLog('info', `Heartbeat stopped for quest ${questId}`);
@@ -234,7 +251,10 @@ export const useQuestManager = createGlobalState(() => {
   }
 
   function stopAllHeartbeats() {
-    for (const [, timer] of heartbeatTimers) clearInterval(timer);
+    for (const [, timer] of heartbeatTimers) {
+      clearTimeout(timer as unknown as ReturnType<typeof setTimeout>);
+      clearInterval(timer);
+    }
     heartbeatTimers.clear();
     heartbeatCounts.value = {};
   }
