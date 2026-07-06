@@ -668,10 +668,9 @@ onMounted(() => {
             </div>
             <TransitionGroup name="game-list" tag="div" class="space-y-1.5">
               <div v-for="game in gameList" :key="game.uid"
-                class="rounded-xl px-3 py-2.5 cursor-pointer transition-all duration-200 flex items-center gap-3"
+                class="rounded-xl px-3 py-2.5 transition-all duration-200 flex items-center gap-3"
                 :class="[selectedGame?.uid===game.uid?'selected-glow':'',game.is_running?'playing-glow':'']"
-                :style="`background:var(--bg-3);border:1px solid ${selectedGame?.uid===game.uid?'rgba(212,64,110,0.3)':game.is_running?'rgba(31,138,90,0.25)':'rgba(180,60,100,0.1)'};`"
-                @click="selectGame(game)">
+                :style="`background:var(--bg-3);border:1px solid ${selectedGame?.uid===game.uid?'rgba(212,64,110,0.3)':game.is_running?'rgba(31,138,90,0.25)':'rgba(180,60,100,0.1)'};`">
                 <div class="relative shrink-0">
                   <div class="w-9 h-9 rounded-lg flex items-center justify-center"
                     style="background:var(--bg-4);color:var(--text-2);">
@@ -681,23 +680,33 @@ onMounted(() => {
                     class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 glow-green"
                     style="background:var(--success);border-color:var(--bg-0);"></div>
                 </div>
-                <div class="flex-1 min-w-0">
+                <div class="flex-1 min-w-0 cursor-pointer" @click="selectGame(game)">
                   <div class="text-sm font-medium truncate flex items-center gap-1" style="color:var(--text-0);">
                     {{ game.name }}<IconVerified class="w-3 h-3 shrink-0" style="color:var(--accent-b);"/>
                   </div>
                   <div class="text-xs mt-0.5"
                     :style="`color:${game.is_running?'var(--success)':'var(--text-3)'}`">
-                    {{ game.is_running?'Running':'Idle' }}
+                    {{ game.is_running ? 'Running' : 'Idle' }}
                   </div>
                 </div>
-                <button v-if="!game.is_running" @click.stop="addToQueue(game)"
-                  :title="gameQueue.some(q=>q.uid===game.uid||q.id===game.id)?'In queue':'Add to queue'"
-                  class="w-7 h-7 flex items-center justify-center rounded-lg text-xs transition-all"
-                  :style="`background:${gameQueue.some(q=>q.uid===game.uid||q.id===game.id)?'rgba(31,138,90,0.15)':'transparent'};border:1px solid ${gameQueue.some(q=>q.uid===game.uid||q.id===game.id)?'rgba(31,138,90,0.25)':'rgba(180,60,100,0.15)'};color:${gameQueue.some(q=>q.uid===game.uid||q.id===game.id)?'var(--success)':'var(--text-3)'};`">
-                  <EnsIcons name="library" :size="12"/>
+                <!-- زر Play/Stop مباشرة على الكارد -->
+                <button v-if="!game.is_running"
+                  @click.stop="installAndPlay({ game, executable: game.executables[0] })"
+                  :disabled="!game.executables?.length"
+                  title="Play"
+                  class="w-8 h-8 flex items-center justify-center rounded-lg transition-all shrink-0 disabled:opacity-40"
+                  style="background:rgba(31,138,90,0.18);border:1px solid rgba(31,138,90,0.3);color:var(--success);">
+                  <EnsIcons name="play" :size="14"/>
+                </button>
+                <button v-else
+                  @click.stop="stopPlaying({ game, executable: game.executables[0] })"
+                  title="Stop"
+                  class="w-8 h-8 flex items-center justify-center rounded-lg transition-all shrink-0"
+                  style="background:rgba(196,48,64,0.15);border:1px solid rgba(196,48,64,0.3);color:#e05060;">
+                  <EnsIcons name="stop" :size="14"/>
                 </button>
                 <button v-if="!game.is_running" @click.stop="removeGame(game)"
-                  class="w-7 h-7 flex items-center justify-center rounded-lg transition-all"
+                  class="w-7 h-7 flex items-center justify-center rounded-lg transition-all shrink-0"
                   style="color:var(--text-3);"
                   @mouseenter="($event.currentTarget as HTMLElement).style.color='#e05060'"
                   @mouseleave="($event.currentTarget as HTMLElement).style.color='var(--text-3)'">
