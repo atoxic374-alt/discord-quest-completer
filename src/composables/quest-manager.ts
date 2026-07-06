@@ -103,16 +103,16 @@ export async function enrollQuest(questId: string, token: string): Promise<boole
 }
 
 // ── Send heartbeat (play progress) ───────────────────────────────────────
-export async function sendQuestHeartbeat(questId: string, token: string): Promise<boolean> {
+export async function sendQuestHeartbeat(questId: string, token: string): Promise<{ ok: boolean; status: number }> {
   try {
     const res = await fetch(`${API_BASE}/quests/${questId}/heartbeat`, {
       method:  'POST',
       headers: discordHeaders(token),
-      body:    '{}',
+      body:    JSON.stringify({ stream_type: 0 }),
       signal:  AbortSignal.timeout(8000),
     });
-    return res.ok || res.status === 204;
-  } catch { return false; }
+    return { ok: res.ok || res.status === 204, status: res.status };
+  } catch { return { ok: false, status: 0 }; }
 }
 
 // ── Claim reward ──────────────────────────────────────────────────────────
@@ -228,16 +228,21 @@ export const useQuestManager = createGlobalState(() => {
   async function _sendHeartbeatAll(questId: string, tokens: string[]) {
     let anyOk = false;
     for (const t of tokens) {
-      const ok = await sendQuestHeartbeat(questId, t);
-      if (ok) anyOk = true;
-    }
-    if (!anyOk) {
-      addLog('warning', `Heartbeat failed for quest ${questId} — will retry next cycle`);
+      const { ok, status } = await sendQuestHeartbeat(questId, t);
+      if (ok) {
+        anyOk = true;
+        addLog('info', `Heartbeat OK (${status || 204}) — quest ${questId}`);
+      } else {
+        addLog('warning', `Heartbeat failed (HTTP ${status}) — quest ${questId}`);
+      }
     }
     heartbeatCounts.value = {
       ...heartbeatCounts.value,
       [questId]: (heartbeatCounts.value[questId] ?? 0) + 1,
     };
+    if (!anyOk) {
+      addLog('error', `All heartbeats failed for quest ${questId} — check token/network`);
+    }
   }
 
   function stopHeartbeat(questId: string) {

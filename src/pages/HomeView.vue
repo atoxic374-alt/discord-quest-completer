@@ -136,19 +136,45 @@ async function playGame({ game, executable }: { game: Game; executable: GameExec
   g.is_running = true; e.is_running = true;
   currentlyPlayingUid.value = g.uid!;
 
-  // Look up the active enrolled quest for this game to get its real duration
+  // If quests haven't been loaded yet, fetch them now so we can enroll + heartbeat
+  if (questMgr.fetchStatus.value === 'idle' || questMgr.fetchStatus.value === 'error') {
+    const accounts = gateway.accounts.value.map(a => ({
+      id: a.id, token: a.token, status: a.gateway.status.value,
+    }));
+    await questMgr.fetchQuestsForAccounts(accounts);
+  }
+
+  const connectedTokens = gateway.accounts.value
+    .filter(a => a.gateway.status.value === 'connected')
+    .map(a => a.token);
+
+  // Find a matching quest for this game
   const matchingQuest = questMgr.liveQuests.value.find(q =>
+    questMgr.getQuestApplicationId(q) === g.id &&
+    !questMgr.isCompleted(q)
+  );
+
+  // Auto-enroll if not enrolled yet
+  if (matchingQuest && !questMgr.isEnrolled(matchingQuest) && connectedTokens.length) {
+    addLog('info', `Auto-enrolling in quest for "${g.name}"…`);
+    await questMgr.autoEnroll(matchingQuest.id, connectedTokens);
+    await questMgr.fetchQuestsForAccounts(gateway.accounts.value.map(a => ({
+      id: a.id, token: a.token, status: a.gateway.status.value,
+    })));
+  }
+
+  const enrolledQuest = questMgr.liveQuests.value.find(q =>
     questMgr.getQuestApplicationId(q) === g.id &&
     questMgr.isEnrolled(q) &&
     !questMgr.isCompleted(q)
   );
-  const durationSecs = matchingQuest ? questMgr.getQuestDuration(matchingQuest) : undefined;
+  const durationSecs = enrolledQuest ? questMgr.getQuestDuration(enrolledQuest) : undefined;
 
   const ok = gateway.startPlaying({ name: g.name, application_id: g.id, type: 0 }, durationSecs);
   if (ok) addLog('info', `Now playing: ${g.name} — presence active`);
   else    addLog('warning', `Playing ${g.name} locally — add a token to show on Discord`);
 
-  // Auto heartbeat for matching quests
+  // Start heartbeat for matching enrolled quest
   _startHeartbeatsForGame(g.id);
 }
 
