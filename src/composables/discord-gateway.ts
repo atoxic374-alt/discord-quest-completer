@@ -70,8 +70,9 @@ export function useDiscordGateway() {
     status.value = 'identifying';
     send(OP_IDENTIFY, {
       token,
-      properties: { os: 'windows', browser: 'Discord Client', device: 'discord' },
+      properties: { os: 'Windows', browser: 'Chrome', device: '' },
       compress:   false,
+      intents:    0,
       presence: currentActivity
         ? buildPresencePayload(currentActivity)
         : { status: 'online', afk: false, since: null, activities: [] },

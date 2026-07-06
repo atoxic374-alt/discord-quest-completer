@@ -21,12 +21,12 @@ function discordHeaders(token: string) {
     'Content-Type':     'application/json',
     'X-Discord-Locale': 'en-US',
     'Accept':           'application/json',
-    'X-Super-Properties': btoa(JSON.stringify({
-      os: 'Windows', browser: 'Discord Client', release_channel: 'stable',
-      client_version: '1.0.9194', platform: 'win32', os_version: '10.0.19045',
+    'X-Super-Properties': btoa(unescape(encodeURIComponent(JSON.stringify({
+      os: 'Windows', browser: 'Chrome', browser_version: '124.0.0.0',
+      os_version: '10', release_channel: 'stable', client_event_source: null,
       system_locale: 'en-US', browser_user_agent:
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) discord/1.0.9194 Chrome/124.0.6367.243 Electron/30.2.0 Safari/537.36',
-    })),
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    })))),
   };
 }
 
