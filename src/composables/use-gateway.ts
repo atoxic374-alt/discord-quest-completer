@@ -1,5 +1,5 @@
 import { createGlobalState } from '@vueuse/core';
-import { ref, computed, shallowRef } from 'vue';
+import { ref, computed, shallowRef, watch } from 'vue';
 import { useDiscordGateway, type PresenceActivity } from './discord-gateway';
 import { useGlobalState } from './app-state';
 
@@ -158,10 +158,33 @@ export const useGatewayManager = createGlobalState(() => {
   });
 
   // ── Presence helpers ──────────────────────────────────────────────────
+  // Tracks the current activity at manager level so reconnecting accounts
+  // automatically pick it up via the watch below.
+  const activeActivity = ref<PresenceActivity | null>(null);
+
+  // Whenever any account transitions to 'connected', resend the active activity
+  watch(
+    () => accounts.value.map(a => a.gateway.status.value).join(','),
+    (statuses, prev) => {
+      if (!activeActivity.value) return;
+      const prevList = (prev ?? '').split(',');
+      accounts.value.forEach((a, i) => {
+        const wasConnected = prevList[i] === 'connected';
+        const nowConnected = a.gateway.status.value === 'connected';
+        if (!wasConnected && nowConnected) {
+          a.gateway.sendPresence(activeActivity.value);
+          addLog('info', `Presence restored: "${activeActivity.value!.name}"`);
+        }
+      });
+    }
+  );
+
   function startPlaying(activity: PresenceActivity, durationSecs?: number) {
+    activeActivity.value = activity;
     const connected = accounts.value.filter(a => a.gateway.status.value === 'connected');
     if (connected.length === 0) {
-      addLog('warning', 'No connected accounts — add a Discord token first.');
+      addLog('warning', 'No connected accounts — presence will be sent automatically when reconnected.');
+      startQuestTimer(activity.name, activity.application_id, durationSecs);
       return false;
     }
     for (const a of connected) a.gateway.sendPresence(activity);
@@ -170,6 +193,7 @@ export const useGatewayManager = createGlobalState(() => {
   }
 
   function stopPlaying() {
+    activeActivity.value = null;
     for (const a of accounts.value) {
       if (a.gateway.status.value === 'connected') a.gateway.clearPresence();
     }
