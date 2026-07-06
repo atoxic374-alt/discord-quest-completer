@@ -213,34 +213,75 @@ export function useDiscordGateway() {
     socket.onerror = () => {
       if (status.value !== 'error') {
         status.value   = 'error';
-        errorMsg.value = 'Connection error — check your network.';
+        errorMsg.value = 'تعذّر الاتصال — تحقق من الشبكة.';
         addLog('error', 'WebSocket connection error');
       }
     };
 
     socket.onclose = (e) => {
       _clearHeartbeat();
-      if (status.value !== 'error') status.value = 'disconnected';
 
-      // Auto-reconnect only on unexpected drops
-      if (!e.wasClean && token && !intentionalClose) {
-        addLog('warning', `Connection lost (${e.code}), reconnecting in 5s…`);
+      // ── Discord-specific 4xxx close codes ─────────────────────────────
+      // Non-reconnectable: token/config invalid — don't retry
+      const FATAL_CODES: Record<number, string> = {
+        4004: 'التوكن غير صحيح أو منتهي (4004) — أضف توكن جديد',
+        4010: 'Invalid shard (4010)',
+        4011: 'Sharding required (4011)',
+        4012: 'Invalid API version (4012)',
+        4013: 'Invalid intents (4013)',
+        4014: 'Disallowed intents (4014)',
+      };
+      // Reconnectable: session/sequence issue — retry with fresh identify
+      const RETRY_CODES: Record<number, string> = {
+        4000: 'Unknown error (4000)',
+        4001: 'Unknown opcode (4001)',
+        4002: 'Decode error (4002)',
+        4003: 'Not authenticated (4003)',
+        4005: 'Already authenticated (4005)',
+        4007: 'Invalid sequence (4007)',
+        4008: 'Rate limited (4008)',
+        4009: 'Session timed out (4009)',
+      };
+
+      if (e.code in FATAL_CODES) {
+        status.value   = 'error';
+        errorMsg.value = FATAL_CODES[e.code];
+        addLog('error', `Discord closed connection: ${FATAL_CODES[e.code]}`);
+        intentionalClose = true;
+        token = null;
+        sessionId = null;
+        return;
+      }
+
+      if (e.code in RETRY_CODES) {
+        addLog('warning', `Discord closed: ${RETRY_CODES[e.code]} — reconnecting in 3s…`);
+        status.value = 'disconnected';
+        const savedToken = token;
         _clearReconnectTimer();
         reconnectTimer = setTimeout(() => {
-          if (token && !intentionalClose) {
-            // Try resume if we have session data
-            if (sessionId && sequence !== null) {
-              const savedToken   = token;
-              const savedSession = sessionId;
-              token = savedToken;
-              sessionId = savedSession;
-              intentionalClose = false;
-              status.value = 'connecting';
-              errorMsg.value = null;
-              _openSocket(resumeGatewayUrl ?? GATEWAY_URL);
-            } else {
-              connect(token);
-            }
+          if (savedToken && !intentionalClose) connect(savedToken);
+        }, 3000);
+        return;
+      }
+
+      // ── Normal / unexpected drops ──────────────────────────────────────
+      if (status.value !== 'error') status.value = 'disconnected';
+
+      if (!e.wasClean && token && !intentionalClose) {
+        addLog('warning', `Connection lost (${e.code}) — reconnecting in 5s…`);
+        _clearReconnectTimer();
+        const savedToken   = token;
+        const savedSession = sessionId;
+        const savedUrl     = resumeGatewayUrl;
+        reconnectTimer = setTimeout(() => {
+          if (!savedToken || intentionalClose) return;
+          if (savedSession && sequence !== null) {
+            token = savedToken; sessionId = savedSession;
+            intentionalClose = false;
+            status.value = 'connecting'; errorMsg.value = null;
+            _openSocket(savedUrl ?? GATEWAY_URL);
+          } else {
+            connect(savedToken);
           }
         }, 5000);
       }

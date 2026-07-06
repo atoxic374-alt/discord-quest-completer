@@ -464,11 +464,16 @@ onMounted(() => {
                   {{ account.gateway.username.value ?? account.label ?? 'Token' }}
                 </div>
                 <div class="text-xs mt-0.5 flex items-center gap-1.5">
-                  <div class="w-1.5 h-1.5 rounded-full"
+                  <div class="w-1.5 h-1.5 rounded-full shrink-0"
                     :style="`background:${statusColors[account.gateway.status.value]||'var(--text-3)'}`"></div>
                   <span :style="`color:${statusColors[account.gateway.status.value]||'var(--text-3)'}`">
                     {{ statusLabels[account.gateway.status.value]||'Unknown' }}
                   </span>
+                </div>
+                <div v-if="account.gateway.errorMsg.value"
+                  class="text-xs mt-1 leading-snug"
+                  style="color:#e05060;">
+                  {{ account.gateway.errorMsg.value }}
                 </div>
               </div>
 
